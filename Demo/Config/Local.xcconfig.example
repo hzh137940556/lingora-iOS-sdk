@@ -1,0 +1,2 @@
+// 复制为 Local.xcconfig 后填写公开 APPLE_SDK Content Delivery URL。
+LINGORA_CONTENT_DELIVERY_URL = https://cdn.example.com/your-apple-delivery

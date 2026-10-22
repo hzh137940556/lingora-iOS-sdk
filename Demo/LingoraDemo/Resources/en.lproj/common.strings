@@ -1,0 +1,2 @@
+/* Common namespace 的英文普通文本基础资源。 */
+"welcome" = "Shared welcome from the Bundle fallback";

@@ -1,0 +1,302 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		100000000000000000000001 /* LingoraDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* LingoraDemoApp.swift */; };
+		100000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* ContentView.swift */; };
+		100000000000000000000003 /* DemoConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* DemoConfiguration.swift */; };
+		100000000000000000000004 /* app.strings in Resources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000001 /* app.strings */; };
+		100000000000000000000005 /* app.stringsdict in Resources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000002 /* app.stringsdict */; };
+		100000000000000000000006 /* Lingora in Frameworks */ = {isa = PBXBuildFile; productRef = 900000000000000000000001 /* Lingora */; };
+		100000000000000000000007 /* common.strings in Resources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000003 /* common.strings */; };
+		100000000000000000000008 /* common.stringsdict in Resources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000004 /* common.stringsdict */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		200000000000000000000001 /* LingoraDemoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LingoraDemoApp.swift; sourceTree = "<group>"; };
+		200000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		200000000000000000000003 /* DemoConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoConfiguration.swift; sourceTree = "<group>"; };
+		200000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		200000000000000000000005 /* en app.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = "en.lproj/app.strings"; sourceTree = "<group>"; };
+		200000000000000000000006 /* en app.stringsdict */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = en; path = "en.lproj/app.stringsdict"; sourceTree = "<group>"; };
+		200000000000000000000007 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		200000000000000000000008 /* Local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig.example; sourceTree = "<group>"; };
+		200000000000000000000009 /* LingoraDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LingoraDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		200000000000000000000010 /* en common.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = "en.lproj/common.strings"; sourceTree = "<group>"; };
+		200000000000000000000011 /* en common.stringsdict */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = en; path = "en.lproj/common.stringsdict"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		A00000000000000000000001 /* Generated */ = {isa = PBXFileSystemSynchronizedRootGroup; path = LingoraDemo/Generated; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		400000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (100000000000000000000006 /* Lingora in Frameworks */);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		500000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				500000000000000000000002 /* LingoraDemo */,
+				A00000000000000000000001 /* Generated */,
+				500000000000000000000004 /* Config */,
+				500000000000000000000005 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		500000000000000000000002 /* LingoraDemo */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000001 /* LingoraDemoApp.swift */,
+				200000000000000000000002 /* ContentView.swift */,
+				200000000000000000000003 /* DemoConfiguration.swift */,
+				200000000000000000000004 /* Info.plist */,
+				500000000000000000000003 /* Resources */,
+			);
+			path = LingoraDemo;
+			sourceTree = "<group>";
+		};
+		500000000000000000000003 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				300000000000000000000001 /* app.strings */,
+				300000000000000000000002 /* app.stringsdict */,
+				300000000000000000000003 /* common.strings */,
+				300000000000000000000004 /* common.stringsdict */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		500000000000000000000004 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000007 /* Base.xcconfig */,
+				200000000000000000000008 /* Local.xcconfig.example */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		500000000000000000000005 /* Products */ = {
+			isa = PBXGroup;
+			children = (200000000000000000000009 /* LingoraDemo.app */);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		600000000000000000000001 /* LingoraDemo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 700000000000000000000002 /* Build configuration list for PBXNativeTarget "LingoraDemo" */;
+			buildPhases = (
+				400000000000000000000002 /* Sources */,
+				400000000000000000000001 /* Frameworks */,
+				400000000000000000000003 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			fileSystemSynchronizedGroups = (A00000000000000000000001 /* Generated */);
+			name = LingoraDemo;
+			packageProductDependencies = (900000000000000000000001 /* Lingora */);
+			productName = LingoraDemo;
+			productReference = 200000000000000000000009 /* LingoraDemo.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		600000000000000000000002 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1620;
+				LastUpgradeCheck = 1620;
+				TargetAttributes = {600000000000000000000001 = {CreatedOnToolsVersion = 16.2;};};
+			};
+			buildConfigurationList = 700000000000000000000001 /* Build configuration list for PBXProject "LingoraDemo" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base, "en-US");
+			mainGroup = 500000000000000000000001;
+			packageReferences = (800000000000000000000001 /* XCLocalSwiftPackageReference ".." */);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 500000000000000000000005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (600000000000000000000001 /* LingoraDemo */);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		400000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000004 /* app.strings in Resources */,
+				100000000000000000000005 /* app.stringsdict in Resources */,
+				100000000000000000000007 /* common.strings in Resources */,
+				100000000000000000000008 /* common.stringsdict in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		400000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000001 /* LingoraDemoApp.swift in Sources */,
+				100000000000000000000002 /* ContentView.swift in Sources */,
+				100000000000000000000003 /* DemoConfiguration.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		300000000000000000000001 /* app.strings */ = {
+			isa = PBXVariantGroup;
+			children = (200000000000000000000005 /* en app.strings */);
+			name = app.strings;
+			sourceTree = "<group>";
+		};
+		300000000000000000000002 /* app.stringsdict */ = {
+			isa = PBXVariantGroup;
+			children = (200000000000000000000006 /* en app.stringsdict */);
+			name = app.stringsdict;
+			sourceTree = "<group>";
+		};
+		300000000000000000000003 /* common.strings */ = {
+			isa = PBXVariantGroup;
+			children = (200000000000000000000010 /* en common.strings */);
+			name = common.strings;
+			sourceTree = "<group>";
+		};
+		300000000000000000000004 /* common.stringsdict */ = {
+			isa = PBXVariantGroup;
+			children = (200000000000000000000011 /* en common.stringsdict */);
+			name = common.stringsdict;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		B00000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 200000000000000000000007 /* Base.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		B00000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 200000000000000000000007 /* Base.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		B00000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 200000000000000000000007 /* Base.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = LingoraDemo/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.lingora.demo;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B00000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 200000000000000000000007 /* Base.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = LingoraDemo/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.lingora.demo;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		700000000000000000000001 /* Build configuration list for PBXProject "LingoraDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (B00000000000000000000001 /* Debug */, B00000000000000000000002 /* Release */);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		700000000000000000000002 /* Build configuration list for PBXNativeTarget "LingoraDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (B00000000000000000000003 /* Debug */, B00000000000000000000004 /* Release */);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		800000000000000000000001 /* XCLocalSwiftPackageReference ".." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		900000000000000000000001 /* Lingora */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 800000000000000000000001 /* XCLocalSwiftPackageReference ".." */;
+			productName = Lingora;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 600000000000000000000002 /* Project object */;
+}

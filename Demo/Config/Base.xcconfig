@@ -1,0 +1,3 @@
+// 提供可提交的非敏感 Demo 构建默认值。
+LINGORA_CONTENT_DELIVERY_URL =
+#include? "Local.xcconfig"
