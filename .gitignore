@@ -6,7 +6,6 @@ DerivedData/
 xcuserdata/
 .DS_Store
 
-# 本机运行配置和生成语言资源。
-Demo/Config/Local.xcconfig
-Demo/LingoraDemo/Generated/*
-!Demo/LingoraDemo/Generated/.gitignore
+# CLI 生成语言资源。
+Demo/LingoraDemo/Generated/
+Demo/LingoraCommon/Generated/

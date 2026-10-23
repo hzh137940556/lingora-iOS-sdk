@@ -18,8 +18,6 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>LINGORA_CONTENT_DELIVERY_URL</key>
-	<string>$(LINGORA_CONTENT_DELIVERY_URL)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchScreen</key>

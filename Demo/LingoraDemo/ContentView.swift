@@ -1,5 +1,6 @@
 // 按 Android Demo 的信息架构展示状态、语言切换和可检查的翻译 key。
 import Lingora
+import LingoraCommon
 import SwiftUI
 
 /// 表示 Demo 页面当前可见的 Content Delivery 状态。
@@ -47,11 +48,7 @@ struct ContentView: View {
                 ForEach(appExamples) { example in
                     translationButton(for: example)
                 }
-                Text(translated("namespace_common"))
-                    .font(.headline)
-                ForEach(commonExamples) { example in
-                    translationButton(for: example)
-                }
+                CommonNamespaceView(language: language)
                 debugLog
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -90,23 +87,6 @@ struct ContentView: View {
             ),
             TranslationExample(table: "app", key: "weekdays", value: translated("weekdays")),
             TranslationExample(table: "app", key: "en_month", value: translated("en_month")),
-        ]
-    }
-
-    /// 展示与 app namespace 同名 key 也能隔离读取的 common 示例。
-    private var commonExamples: [TranslationExample] {
-        _ = updater
-        return [
-            TranslationExample(
-                table: "common",
-                key: "welcome",
-                value: translated("welcome", table: "common")
-            ),
-            TranslationExample(
-                table: "common",
-                key: "items_count",
-                value: translated("items_count", Int64(3), table: "common")
-            ),
         ]
     }
 
@@ -220,7 +200,7 @@ struct ContentView: View {
     /// 切换本地展示 locale；配置远端时同时切换并刷新 SDK 文档。
     private func switchLanguage(to languageTag: String) async {
         language = languageTag
-        guard DemoConfiguration.contentDeliveryURL != nil else {
+        guard Lingora.shared.isInitialized else {
             loadState = .bundleFallback(translated("source_bundle"))
             return
         }
@@ -237,7 +217,7 @@ struct ContentView: View {
 
     /// 刷新当前语言，并在未配置远端时明确展示 Bundle fallback。
     private func refresh() async {
-        guard DemoConfiguration.contentDeliveryURL != nil else {
+        guard Lingora.shared.isInitialized else {
             loadState = .bundleFallback(translated("source_bundle"))
             return
         }

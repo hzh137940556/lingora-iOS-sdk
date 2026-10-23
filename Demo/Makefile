@@ -18,6 +18,9 @@ cli-push: check_cli
 	$(LINGORA) --config ci/lingora.dev.json push
 
 cli-pull: check_cli
-	$(LINGORA) --config ci/lingora.dev.json pull
+	$(LINGORA) --config ci/lingora.dev.json pull \
+		--namespaces app --path LingoraDemo/Generated
+	$(LINGORA) --config ci/lingora.dev.json pull \
+		--namespaces common --path LingoraCommon/Generated
 
 mock_ci: cli-validate cli-push cli-pull

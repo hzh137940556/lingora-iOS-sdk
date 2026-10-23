@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# 仅管理 Swift Package 的版本、来源、审批与 CI 发版，不读取 SDK 或 Demo 业务实现。
+# 管理 Swift Package 的版本、SDK 子树快照、来源、审批与 CI 发版。
 from __future__ import annotations
 
 import argparse
@@ -89,7 +89,67 @@ def existing_tag_sha(release: Release) -> str | None:
     return None
 
 
-# 校验 workflow_dispatch 的分支、SHA 与版本唯一性，审批后仍锁定同一提交。
+# 返回 source commit 中可发布 SDK 子树的 Git tree。
+def sdk_tree_sha(source_sha: str) -> str:
+    return git("rev-parse", f"{source_sha}:SDK")
+
+
+# 校验既有 Tag 是否仍精确对应同一 source commit 和 SDK 子树。
+def package_snapshot_matches(release: Release, source_sha: str) -> bool:
+    tag_sha = existing_tag_sha(release)
+    if tag_sha is None:
+        return False
+    parent = subprocess.run(
+        ["git", "rev-parse", f"{tag_sha}^"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    tree = subprocess.run(
+        ["git", "rev-parse", f"{tag_sha}^{{tree}}"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if parent.returncode != 0 or tree.returncode != 0:
+        return False
+    return parent.stdout.strip() == source_sha and tree.stdout.strip() == sdk_tree_sha(source_sha)
+
+
+# 从已验证提交的 SDK 子树创建 Package 根快照；重试只能复用完全相同的 Tag。
+def create_package_tag(release: Release, source_sha: str) -> str:
+    if git("rev-parse", "HEAD") != source_sha:
+        raise ValueError("当前代码与待发布 source SHA 不一致，禁止创建 Package Tag")
+    tag_sha = existing_tag_sha(release)
+    if tag_sha is not None:
+        if not package_snapshot_matches(release, source_sha):
+            raise ValueError(f"Tag 已存在但不是当前 SDK snapshot：{release.tag}")
+        return tag_sha
+    tree_sha = sdk_tree_sha(source_sha)
+    message = f"Publish Lingora Swift Package {release.version}\n\nSource-Commit: {source_sha}\n"
+    snapshot = subprocess.run(
+        ["git", "commit-tree", tree_sha, "-p", source_sha],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        input=message,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        [
+            "git", "tag", "-a", release.tag,
+            "-m", f"Publish Lingora Swift Package {release.version}\n\nSource-Commit: {source_sha}",
+            snapshot,
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+    return snapshot
+
+
+# 校验 workflow_dispatch 的分支、SHA 与版本唯一性，审批后仍锁定同一 SDK 快照。
 def verify_request(
     release: Release,
     ref_type: str,
@@ -106,8 +166,10 @@ def verify_request(
     fetch_source(release, tags=True)
     check_source(release, sha)
     tag_sha = existing_tag_sha(release)
-    if tag_sha is not None and (not allow_existing_tag or tag_sha != sha):
-        raise ValueError(f"Tag 已存在或指向其他提交，必须使用新版本：{release.tag}")
+    if tag_sha is not None and (
+        not allow_existing_tag or not package_snapshot_matches(release, sha)
+    ):
+        raise ValueError(f"Tag 已存在或指向其他 SDK snapshot，必须使用新版本：{release.tag}")
     return sha
 
 
@@ -229,6 +291,10 @@ def main(argv: list[str] | None = None) -> int:
         command = commands.add_parser(name)
         command.add_argument("--channel", choices=("dev", "release"), required=True)
         command.add_argument("--version", required=True)
+    create = commands.add_parser("create-package-tag")
+    create.add_argument("--channel", choices=("dev", "release"), required=True)
+    create.add_argument("--version", required=True)
+    create.add_argument("--source-sha", required=True)
     verify = commands.add_parser("verify-request")
     verify.add_argument("--channel", choices=("dev", "release"), required=True)
     verify.add_argument("--version", required=True)
@@ -251,6 +317,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             check_environment(release, args.repository)
             report(release, sha, args.github_output)
+        elif args.command == "create-package-tag":
+            snapshot = create_package_tag(release, args.source_sha)
+            print(json.dumps({"tag": release.tag, "package_sha": snapshot}, ensure_ascii=False))
         elif args.command == "publish":
             publish(release)
         else:

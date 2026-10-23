@@ -75,11 +75,38 @@ class SourceTests(unittest.TestCase):
         self.run_git("init", "--initial-branch=main")
         self.run_git("config", "user.name", "Release Test")
         self.run_git("config", "user.email", "release-test@example.invalid")
-        self.run_git("commit", "--allow-empty", "-m", "base")
+        (self.root / "SDK/Sources/Lingora").mkdir(parents=True)
+        (self.root / "Demo").mkdir()
+        (self.root / "scripts").mkdir()
+        (self.root / "SDK/Package.swift").write_text(
+            """// swift-tools-version: 6.0
+import PackageDescription
+
+let package = Package(
+    name: "Lingora",
+    products: [.library(name: "Lingora", targets: ["Lingora"])],
+    targets: [.target(name: "Lingora")]
+)
+""",
+            encoding="utf-8",
+        )
+        (self.root / "SDK/Sources/Lingora/Lingora.swift").write_text(
+            "public enum LingoraVersion { public static let value = 1 }\n",
+            encoding="utf-8",
+        )
+        (self.root / "Demo/App.swift").write_text("// demo\n", encoding="utf-8")
+        (self.root / "scripts/release.py").write_text("# repository script\n", encoding="utf-8")
+        self.run_git("add", "SDK", "Demo", "scripts")
+        self.run_git("commit", "-m", "base")
         self.main_sha = self.run_git("rev-parse", "HEAD")
         self.run_git("update-ref", "refs/remotes/origin/main", self.main_sha)
         self.run_git("checkout", "-b", "develop")
-        self.run_git("commit", "--allow-empty", "-m", "development")
+        (self.root / "SDK/Sources/Lingora/Lingora.swift").write_text(
+            "public enum LingoraVersion { public static let value = 2 }\n",
+            encoding="utf-8",
+        )
+        self.run_git("add", "SDK")
+        self.run_git("commit", "-m", "development")
         self.dev_sha = self.run_git("rev-parse", "HEAD")
         self.run_git("update-ref", "refs/remotes/origin/develop", self.dev_sha)
 
@@ -111,10 +138,10 @@ class SourceTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "develop"):
                 sdk.verify_request(release, "tag", "develop", self.dev_sha)
 
-    # 初次请求拒绝重复 Tag，审批后重试只允许同一 SHA 的 Tag。
+    # 初次请求拒绝重复 Tag，审批后重试只允许同一 source 的 SDK 快照。
     def test_existing_tag_is_only_allowed_for_approved_retry(self) -> None:
         release = sdk.Release("dev", "0.1.0-dev.1")
-        self.run_git("tag", release.tag, self.dev_sha)
+        sdk.create_package_tag(release, self.dev_sha)
         with patch.object(sdk, "fetch_source"):
             with self.assertRaisesRegex(ValueError, "Tag 已存在"):
                 sdk.verify_request(release, "branch", "develop", self.dev_sha)
@@ -130,7 +157,7 @@ class SourceTests(unittest.TestCase):
             )
         self.run_git("tag", "-f", release.tag, self.main_sha)
         with patch.object(sdk, "fetch_source"):
-            with self.assertRaisesRegex(ValueError, "其他提交"):
+            with self.assertRaisesRegex(ValueError, "其他 SDK snapshot"):
                 sdk.verify_request(
                     release,
                     "branch",
@@ -138,6 +165,59 @@ class SourceTests(unittest.TestCase):
                     self.dev_sha,
                     allow_existing_tag=True,
                 )
+
+    # 版本 Tag 的根目录必须是 SDK 子树，不得包含 Demo、脚本或 SDK/ 目录前缀。
+    def test_package_snapshot_contains_only_sdk_tree(self) -> None:
+        release = sdk.Release("dev", "0.1.0-dev.1")
+        snapshot = sdk.create_package_tag(release, self.dev_sha)
+        self.assertEqual(self.run_git("rev-parse", f"{snapshot}^"), self.dev_sha)
+        self.assertEqual(
+            set(self.run_git("ls-tree", "--name-only", snapshot).splitlines()),
+            {"Package.swift", "Sources"},
+        )
+        paths = self.run_git("ls-tree", "-r", "--name-only", snapshot).splitlines()
+        self.assertNotIn("Demo/App.swift", paths)
+        self.assertNotIn("scripts/release.py", paths)
+        self.assertFalse(any(path.startswith("SDK/") for path in paths))
+        self.assertTrue(sdk.package_snapshot_matches(release, self.dev_sha))
+
+    # 独立消费者必须能按版本 Tag 解析并编译 package-only snapshot。
+    def test_swiftpm_resolves_package_only_version(self) -> None:
+        release = sdk.Release("dev", "0.1.0-dev.1")
+        sdk.create_package_tag(release, self.dev_sha)
+        with tempfile.TemporaryDirectory() as directory:
+            consumer = Path(directory)
+            (consumer / "Sources/Consumer").mkdir(parents=True)
+            (consumer / "Package.swift").write_text(
+                f"""// swift-tools-version: 6.0
+import PackageDescription
+
+let package = Package(
+    name: "Consumer",
+    dependencies: [
+        .package(url: "{self.root.as_uri()}", exact: "{release.version}")
+    ],
+    targets: [
+        .executableTarget(
+            name: "Consumer",
+            dependencies: [.product(name: "Lingora", package: "{self.root.name}")]
+        )
+    ]
+)
+""",
+                encoding="utf-8",
+            )
+            (consumer / "Sources/Consumer/main.swift").write_text(
+                "import Lingora\nprint(LingoraVersion.value)\n",
+                encoding="utf-8",
+            )
+            subprocess.run(
+                ["swift", "build"],
+                cwd=consumer,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
 
     # 本地发版拒绝错误分支和脏工作区，不触发 CI。
     def test_local_publish_requires_correct_clean_branch(self) -> None:

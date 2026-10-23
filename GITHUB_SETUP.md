@@ -30,7 +30,9 @@ Restrict deletions，不允许移动或删除已发布版本。版本格式仍�
 - release：`X.Y.Z`
 
 不要限制 publish Job 创建新 Tag；不要手工创建版本 Tag。SwiftPM 以 Tag 作为版本，Tag 出现即代表
-源码包已经可解析，因此工作流会在验证和环境审批完成后才创建 Tag。
+源码包已经可解析，因此工作流会在验证和环境审批完成后，使用已验证提交的 `SDK/` 子树生成一个
+package-only snapshot commit，再对该 commit 创建 Tag。Tag 展开的根目录只有 Package 内容，不包含
+Demo、CLI 或仓库脚本。
 
 ## 4. 配置双渠道人工审批
 
@@ -70,11 +72,12 @@ make publish VERSION=0.1.0
 
 1. 再次验证版本、来源分支、commit SHA、环境配置、SDK tests、Demo build 和边界门禁。
 2. 等待对应 Environment 审批。
-3. 审批后再次锁定同一 SHA，并创建 annotated SemVer Tag。
+3. 审批后再次锁定同一 source SHA，从其 `SDK/` 子树生成 package-only snapshot commit，并创建 annotated SemVer Tag。
 4. 创建 GitHub Release；dev 标记为 prerelease，release 为稳定版本。
 
 publish Job 失败时先看 Tag 是否已经创建。如果 Tag 尚未创建，可修复后使用新 dispatch；如果 Tag 已创建且
-指向已验证 SHA，只重试原 publish Job 完成 GitHub Release。不要删除或移动 Tag，代码修复必须递增版本。
+snapshot 的父提交和目录树都对应已验证 source SHA，只重试原 publish Job 完成 GitHub Release。不要删除或
+移动 Tag，代码修复必须递增版本。
 
 ## 6. 消费验证
 

@@ -3,13 +3,13 @@ VERSION ?=
 SDK_CHANNEL ?= release
 
 .PHONY: sdk-build sdk-test demo-build check-boundaries release-test check-version \
-	cli-validate verify publish-dev publish
+	cli-validate cli-push cli-pull mock_ci verify publish-dev publish
 
 sdk-build:
-	swift build
+	swift build --package-path SDK
 
 sdk-test:
-	swift test --no-parallel --enable-code-coverage
+	swift test --package-path SDK --no-parallel --enable-code-coverage
 
 demo-build:
 	xcodebuild -project Demo/LingoraDemo.xcodeproj -scheme LingoraDemo \
@@ -24,9 +24,8 @@ release-test:
 check-version:
 	@python3 scripts/sdk_release.py info --version "$(VERSION)" --channel "$(SDK_CHANNEL)"
 
-cli-validate:
-	version=$$(tr -d '[:space:]' < Demo/lingora-cli.version); \
-	uvx --from "lingora-cli==$$version" lingora --config Demo/ci/lingora.dev.json validate
+cli-validate cli-push cli-pull mock_ci:
+	$(MAKE) -C Demo $@
 
 verify: check-boundaries release-test sdk-build sdk-test demo-build
 

@@ -128,17 +128,14 @@ jobs:
 
       - name: Create immutable SwiftPM version and GitHub Release
         run: |
-          existing_sha="$(git rev-parse --verify "refs/tags/$TAG_NAME^{commit}" 2>/dev/null || true)"
-          if [[ -n "$existing_sha" && "$existing_sha" != "$RELEASE_SHA" ]]; then
-            printf 'Tag %s 已指向其他提交，发布停止。\n' "$TAG_NAME" >&2
-            exit 1
-          fi
-          if [[ -z "$existing_sha" ]]; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git tag -a "$TAG_NAME" -m "Publish Lingora Swift Package $SDK_VERSION" "$RELEASE_SHA"
-            git push origin "refs/tags/$TAG_NAME"
-          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          python3 scripts/sdk_release.py create-package-tag \
+            --channel "$SDK_CHANNEL" \
+            --version "$SDK_VERSION" \
+            --source-sha "$RELEASE_SHA"
+          git push origin "refs/tags/$TAG_NAME"
+          PACKAGE_SHA="$(git rev-parse "refs/tags/$TAG_NAME^{commit}")"
 
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             printf 'GitHub Release %s 已存在，无需重复创建。\n' "$TAG_NAME"
@@ -159,6 +156,7 @@ jobs:
             printf '## ✅ Swift Package 版本已发布\n\n'
             printf -- '- 渠道：`%s`\n' "$SDK_CHANNEL"
             printf -- '- 版本/Tag：`%s`\n' "$TAG_NAME"
-            printf -- '- Commit SHA：`%s`\n' "$RELEASE_SHA"
+            printf -- '- Source SHA：`%s`\n' "$RELEASE_SHA"
+            printf -- '- Package snapshot SHA：`%s`\n' "$PACKAGE_SHA"
             printf -- '- Package URL：`https://github.com/%s.git`\n' "$GITHUB_REPOSITORY"
           } >> "$GITHUB_STEP_SUMMARY"

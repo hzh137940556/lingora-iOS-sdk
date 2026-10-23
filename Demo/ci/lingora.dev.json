@@ -1,6 +1,6 @@
 {
   "apiUrl": "https://lingora-dev.fun.brain.ai",
-  "projectId": "6acbf9e2-b605-40e4-90b1-066fbb1d4506",
+  "projectId": "abbf860f-e7cf-423b-8cf2-5ec1fd70ed15",
   "branch": "develop",
   "push": {
     "files": [
@@ -15,17 +15,17 @@
         "namespace": "app"
       },
       {
-        "path": "../LingoraDemo/Resources/en.lproj/common.strings",
+        "path": "../LingoraCommon/Resources/en.lproj/common.strings",
         "language": "en-US",
         "namespace": "common"
       },
       {
-        "path": "../LingoraDemo/Resources/en.lproj/common.stringsdict",
+        "path": "../LingoraCommon/Resources/en.lproj/common.stringsdict",
         "language": "en-US",
         "namespace": "common"
       }
     ],
-    "forceMode": "NO_FORCE",
+    "forceMode": "KEEP",
     "overrideMode": "RECOMMENDED",
     "errorOnUnresolvedConflict": "auto",
     "overrideKeyDescriptions": false,

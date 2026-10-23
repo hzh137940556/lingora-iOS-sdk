@@ -1,3 +1,0 @@
-# 保留目录，忽略 lingora pull 生成的语言资源。
-*
-!.gitignore
