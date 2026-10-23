@@ -1,0 +1,11 @@
+# SwiftPM 与 Xcode 生成物。
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+
+# CLI 生成语言资源。
+Demo/LingoraDemo/Generated/
+Demo/LingoraCommon/Generated/
