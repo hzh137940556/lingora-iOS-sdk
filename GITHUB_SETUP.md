@@ -140,7 +140,7 @@ SDK 发布与独立 Package 验收在单独 PR 中维护，不依赖此 Demo 工
 未启用时同步 Job 跳过，普通 PR 与 `make verify` 始终不写翻译服务。工作流进入默认分支后才能
 稳定使用手动入口。手动选择非 develop 分支不会同步，上传前还会拒绝落后于最新 develop 的提交。
 
-启用后流程为固定 CLI → validate → push → app/common pull → validate → 必需文件检查 →
+启用后流程为配置并解析固定 SDK / 检查公开 URL → 固定 CLI → validate → push → app/common pull → validate → 必需文件检查 →
 远端固定版本 Package 构建 → 检查生成资源进入正确 Bundle → 上传模拟器 App ZIP（保留 7 天）。
 只检出 Demo，在上传前通过同一配置命令应用固定 dev 版本，不允许本地 SDK 源码兜底。API Key 仅用于同步步骤，不传给 Xcode。
 成功 push 不因后续失败回滚，KEEP 不覆盖已有非空值；CLI 同步不会自动发布 Content Delivery。

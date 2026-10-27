@@ -35,7 +35,7 @@
 
 - `main` push（含合并）触发，普通 PR 不上传文案。按团队规则配置分支保护与触发分支。
 - 所有写同一翻译目标的工作流使用相同 concurrency group；上传前拒绝旧提交。
-- 固定 CLI → validate → push → 两个 namespace pull → validate → 必需文件检查 → SwiftPM 解析 → 构建。
+- 固定 CLI → 检查公开 URL / 解析锁定 Package → validate → push → 两个 namespace pull → validate → 必需文件检查 → 使用已解析 Package 构建。
 - 必需文件检查要求配置中每种语言的两个 table 都有非空 `.strings` / `.stringsdict`；按产品语言及
   plural 要求调整。validate 成功或文件非空都不代表全量翻译覆盖。
 - `KEEP` 保留远端已有非空值，不自动更新已修改的英语；pull 使用 TRANSLATED/REVIEWED 时允许未审核译文。

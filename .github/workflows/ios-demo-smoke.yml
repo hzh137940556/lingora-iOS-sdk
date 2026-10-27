@@ -41,5 +41,6 @@ jobs:
           mode=release
           if [[ "$SDK_VERSION" == *-dev.* ]]; then mode=dev; fi
           python3 Demo/scripts/configure_sdk.py --mode "$mode" --version "$SDK_VERSION"
+          python3 Demo/scripts/build_demo.py --resolve-only
           python3 Demo/scripts/build_demo.py
           printf 'Verified published Swift Package %s with isolated iOS App/framework.\n' "$SDK_VERSION" >> "$GITHUB_STEP_SUMMARY"

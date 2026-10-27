@@ -3,18 +3,39 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import shutil
 import subprocess
 import tempfile
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from check_resources import check
 from configure_sdk import configure
 
 DEMO = Path(__file__).resolve().parents[1]
+
+
+# 远端普通构建只消费已提交的同一来源、版本与提交锁，不静默改写解析结果。
+def check_resolution(demo: Path, config: dict, *, fixture: bool = False) -> None:
+    if config["mode"] == "local":
+        return
+    path = demo / "LingoraDemo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+    kind = "localSourceControl" if fixture else "remoteSourceControl"
+    location = unquote(urlsplit(config["repositoryURL"]).path) if fixture else config["repositoryURL"]
+    try:
+        pins = json.loads(path.read_text())["pins"]
+        valid = (len(pins) == 1 and pins[0].get("kind") == kind
+                 and pins[0].get("location") == location
+                 and pins[0].get("state", {}).get("version") == config["version"]
+                 and re.fullmatch(r"[0-9a-f]{40}", pins[0].get("state", {}).get("revision", "")))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        valid = False
+    if not valid:
+        raise ValueError("Missing or mismatched Package.resolved; run build_demo.py --resolve-only and commit the lock file")
 
 
 # 在临时 Git 仓库中发布真实 SDK 源码 fixture，不修改本仓库或真实版本 Tag。
@@ -77,6 +98,14 @@ def build(args: argparse.Namespace, workspace: Path) -> None:
         command.append(f"LINGORA_CONTENT_DELIVERY_URL={delivery.strip()}")
     if args.fixture_channel:
         command.append("LINGORA_SDK_TEST_FIXTURE=1")
+    if args.resolve_only or args.fixture_channel:
+        subprocess.run([*command, "-resolvePackageDependencies"], check=True)
+    check_resolution(demo, config, fixture=bool(args.fixture_channel))
+    if args.resolve_only:
+        print(f"Verified SDK resolution ({config['mode']}, {config['version'] or 'local'}) and build inputs")
+        return
+    if config["mode"] != "local":
+        command.append("-onlyUsePackageVersionsFromResolvedFile")
     subprocess.run([*command, "build"], check=True)
     app = workspace / "DerivedData/Build/Products/Debug-iphonesimulator/LingoraDemo.app"
     if delivery is not None:
@@ -97,7 +126,8 @@ def build(args: argparse.Namespace, workspace: Path) -> None:
         # 精确版本不存在时必须让 SwiftPM 失败，不能复用刚构建的版本或回退源码。
         missing_version = "99.0.0-dev.1" if args.fixture_channel == "dev" else "99.0.0"
         configure(demo, {"version": missing_version}, fixture=True)
-        result = subprocess.run([*command, "-resolvePackageDependencies"],
+        result = subprocess.run([*(item for item in command if item != "-onlyUsePackageVersionsFromResolvedFile"),
+                                 "-resolvePackageDependencies"],
                                 capture_output=True, text=True)
         if result.returncode == 0 or missing_version not in result.stdout + result.stderr:
             raise ValueError("Missing exact version did not fail as expected: "
@@ -113,6 +143,8 @@ def main() -> None:
                         help="Test-only: build a temporary Git package in an isolated consumer")
     parser.add_argument("--check-resources", action="store_true")
     parser.add_argument("--config")
+    parser.add_argument("--resolve-only", action="store_true",
+                        help="Explicitly resolve a changed SDK source/version before building and commit Package.resolved")
     parser.add_argument("--artifact", help="New destination for the simulator .app")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="lingora-consumer-") as directory:

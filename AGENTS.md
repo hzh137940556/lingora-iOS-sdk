@@ -28,6 +28,7 @@
 - `Demo/sdk-source.json` 统一配置 local/dev/release；`configure_sdk.py` 将选择持久化到实际 Xcode 工程，配置与工程必须一致。普通构建和 Xcode 检查但不自动改写。
 - Demo 默认固定 dev 版本 `0.1.0-dev.1`；远端配置与 Xcode 的 Package.resolved 一并提交，不提交不存在版本的伪造解析结果。
 - local 只读取相对 `localPath`，version 为空；dev 必须为 `X.Y.Z-dev.N`，release 必须为 `X.Y.Z`，都使用 exactVersion，远端不访问或回退本地 SDK。
+- 普通远端脚本构建必须使用匹配配置的 Package.resolved；切换版本后显式执行 `build_demo.py --resolve-only`。翻译 CI 在任何上传前完成 URL 校验和依赖解析。
 - fixture 是测试专用入口，使用同一配置逻辑在无 SDK 的隔离消费者验证两个渠道，file URL 仅测试可用，不修改当前工程选择。
 - Demo 公开 URL 由 build setting 写入 Info.plist；CI 必须显式注入，不能静默使用工程开发默认值。
 - CLI 顺序固定为 validate/push/pull/validate/资源检查，即使 `make -j` 也必须串行，失败立即退出。

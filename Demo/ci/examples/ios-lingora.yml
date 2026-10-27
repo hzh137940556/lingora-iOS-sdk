@@ -41,6 +41,20 @@ jobs:
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(rc[0-9]+)?$ ]]
           uv tool install --python 3.12 "lingora-cli==$version"
           echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
+      - name: Check public URL and resolve locked SDK before remote writes
+        run: |
+          python3 - <<'PYTHON'
+          import os
+          from urllib.parse import urlsplit
+          value = os.environ["LINGORA_CONTENT_DELIVERY_URL"]
+          url = urlsplit(value)
+          if (url.scheme not in ("http", "https") or not url.hostname
+              or url.username or url.password or url.query or url.fragment
+              or any(c in value for c in "\r\n$")):
+              raise SystemExit("Delivery URL must be public HTTP(S) without query or credentials")
+          PYTHON
+          xcodebuild -resolvePackageDependencies -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/Packages" -onlyUsePackageVersionsFromResolvedFile
       - name: Reject outdated source before writing
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,10 +74,8 @@ jobs:
           lingora --config "$LINGORA_CONFIG" validate --namespaces common --path "$COMMON_OUTPUT"
           python3 ci/check_resources.py --config "$LINGORA_CONFIG" \
             --app-output "$APP_OUTPUT" --common-output "$COMMON_OUTPUT"
-      - name: Resolve committed package versions and build
+      - name: Build committed package versions
         run: |
-          xcodebuild -resolvePackageDependencies -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" \
-            -clonedSourcePackagesDirPath "$RUNNER_TEMP/Packages" -onlyUsePackageVersionsFromResolvedFile
           xcodebuild -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -configuration Debug \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/Packages" -disableAutomaticPackageResolution \

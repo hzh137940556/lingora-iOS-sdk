@@ -1,15 +1,18 @@
 """验证日常 Xcode 工程的来源切换、固定版本和失败边界。"""
 import json
+import argparse
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 DEMO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEMO / "scripts"))
 from configure_sdk import configure
+from build_demo import check_resolution, build
 
 
 class SDKSourceTests(unittest.TestCase):
@@ -104,6 +107,37 @@ class SDKSourceTests(unittest.TestCase):
         configure(self.demo, {"localPath": "../自定义 SDK"})
         self.assertIn('relativePath = "../自定义 SDK";', self.project.read_text())
         configure(self.demo, check=True)
+
+    # 缺失或与工程不一致的锁文件不能被普通构建静默更新。
+    def test_remote_build_requires_matching_lock(self):
+        config = configure(self.demo, {"mode": "dev", "version": "0.1.0-dev.1"})
+        lock = self.demo / "LingoraDemo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+        with self.assertRaisesRegex(ValueError, "Package.resolved"):
+            check_resolution(self.demo, config)
+        lock.parent.mkdir(parents=True)
+        pin = {"kind": "remoteSourceControl", "location": config["repositoryURL"],
+               "state": {"version": config["version"], "revision": "a" * 40}}
+        lock.write_text(json.dumps({"pins": [pin]}))
+        check_resolution(self.demo, config)
+        for key, value in (("version", "0.1.0-dev.2"), ("revision", "develop")):
+            changed = json.loads(json.dumps(pin))
+            changed["state"][key] = value
+            lock.write_text(json.dumps({"pins": [changed]}))
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                check_resolution(self.demo, config)
+        pin["location"] = "https://example.com/another.git"
+        lock.write_text(json.dumps({"pins": [pin]}))
+        with self.assertRaises(ValueError):
+            check_resolution(self.demo, config)
+
+    # 上传前的解析入口也必须提前拒绝无效 URL，不能等到资源上传后才检查。
+    def test_resolve_preflight_rejects_bad_delivery_before_xcode(self):
+        args = argparse.Namespace(fixture_channel=None, resolve_only=True)
+        with patch("build_demo.DEMO", self.demo), patch("build_demo.subprocess.run") as run:
+            with patch.dict("os.environ", {"LINGORA_CONTENT_DELIVERY_URL": "https://user:secret@example.com"}):
+                with self.assertRaisesRegex(ValueError, "Delivery URL"):
+                    build(args, self.root / "build")
+            run.assert_not_called()
 
 
 if __name__ == "__main__":

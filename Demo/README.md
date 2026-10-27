@@ -30,6 +30,8 @@ Demo 保持现有 SwiftUI 页面，通过公开 `Lingora` product 展示 `app` �
 make configure-sdk SDK_MODE=local
 make configure-sdk SDK_MODE=dev SDK_VERSION=X.Y.Z-dev.N
 make configure-sdk SDK_MODE=release SDK_VERSION=X.Y.Z
+# 每次切换远端来源或版本后显式解析，并提交实际生成的 Package.resolved。
+python3 scripts/build_demo.py --resolve-only
 open LingoraDemo.xcodeproj
 ```
 
@@ -44,7 +46,9 @@ open LingoraDemo.xcodeproj
 
 远端模式只声明 `XCRemoteSwiftPackageReference` 的 `exactVersion`，不读取 `localPath`、不要求本地 SDK
 存在。版本缺失、格式错误、渠道不匹配或远端解析失败都会报错，绝不回退源码。正常 SwiftPM 缓存复用
-不等于源码回退；切换版本后 Xcode 会按新的精确依赖更新 Package.resolved，远端配置提交时一并保留该锁文件。
+不等于源码回退。普通脚本构建强制使用与配置匹配的 Package.resolved；缺失或过期时直接失败。
+切换版本后运行 `python3 scripts/build_demo.py --resolve-only`（或在 Xcode 显式解析），与配置一起提交锁文件。
+翻译 CI 在上传前先解析所选远端版本并检查公开 URL，构建阶段使用该解析结果，不静默更新版本。
 
 ```bash
 # 使用当前已应用的配置构建，与 Xcode 相同。
