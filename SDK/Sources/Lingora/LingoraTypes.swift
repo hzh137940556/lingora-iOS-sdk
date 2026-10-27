@@ -42,3 +42,12 @@ struct LingoraConfiguration: Sendable {
     let namespaces: Set<String>
     let enableDebugLogs: Bool
 }
+
+/// 表示当前语言最近一次获取的状态；失败不会清除已有翻译。
+public enum LingoraLoadState: Sendable, Equatable {
+    case idle
+    case loading
+    case loaded(source: LingoraFetchSource, failedTables: [String])
+    case fallback(failedTables: [String])
+    case cancelled
+}

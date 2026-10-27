@@ -142,3 +142,30 @@ JSON 按显式 language（未指定时使用 locale 标签）、父语言、Bund
 Bundle 是不可变资源，SDK 按 Bundle 路径缓存解析及缺失结果，`clearCache` 仅清理远端缓存。
 可选 swizzling 继续只接管远端普通字符串；Bundle JSON 使用显式 SDK API，
 不会改变 `NSLocalizedString` 或系统 plural 的行为。
+
+## 运行时可靠性与状态
+
+`remoteFetch()` 保持每次主动检查远端的行为。自动或重复触发的调用可以使用
+`remoteFetch(forceRefresh: false)`：同一 language/table 请求失败后冷却 2 秒，再次调用使用当前
+有效磁盘缓存或 Bundle 回退；默认调用或 `forceRefresh: true` 可立即重试。
+不同 namespace 独立冷却，取消不会记作失败。
+
+同一 URL 的请求与磁盘写入按顺序执行，不同 namespace 仍可并行；最新一次当前语言刷新
+决定内存和状态，语言切换前的旧请求不会覆盖新语言。排队请求取消后不会发出网络请求，
+但其等待结束时间受前一个请求的完成/超时限制。
+
+`loadState` 与 `onLoadStateChanged()` 提供当前语言的状态：`idle`、`loading`、
+`loaded(source:failedTables:)`、`fallback(failedTables:)` 和 `cancelled`。
+订阅立即得到当前值。`failedTables` 的空字符串代表根文档；部分 namespace 失败时仍保留
+有效翻译。`fallback` 表示本次请求没有取得有效文档，不表示已清空以前的内存翻译。
+预取其他语言不修改当前语言的状态；详细原因继续通过不含响应正文的日志提供。
+
+外部 JSON 的 printf 模板在格式化前检查所需参数数量、位置和 ABI 类型，允许译文不使用额外参数。支持对象、常用整数、
+浮点、显式位置、固定宽度/精度和百分号；拒绝 `%n`、指针、C 字符串、动态宽度、混合位置
+及超大宽度。检查失败继续回退到本地资源；无参数调用保持原文。原生 `.stringsdict`
+仍由 Foundation 处理，调用方须按自己的原生资源签名传参。
+极大或非有限 plural 数值安全选择 `other`，不执行溢出的整数转换。
+
+`setCustomLocale` 不再要求语言存在于 `Bundle.main` 的 lproj 中；JSON-only、framework 和远端
+语言均可按安全语言标签选择。该方法不声明语言已发布，也不自动发现可用语言或发起网络请求；
+缺失内容继续遵循回退顺序，manifest/语言目录协议保持不变。

@@ -21,19 +21,58 @@ actor ContentDeliveryStore {
     private let cacheDirectory: URL
     private let session: URLSession
     private let appVersion: String
+    private let failureCooldown: Duration
+    private var waiters: [URL: [CheckedContinuation<Void, Never>]] = [:]
+    private var failures: [URL: ContinuousClock.Instant] = [:]
 
     /// 注入网络会话和缓存目录，便于隔离测试。
-    init(cacheDirectory: URL, session: URLSession, appVersion: String) {
+    init(cacheDirectory: URL, session: URLSession, appVersion: String, failureCooldown: Duration = .seconds(2)) {
         self.cacheDirectory = cacheDirectory
         self.session = session
         self.appVersion = appVersion
+        self.failureCooldown = failureCooldown
     }
 
     /// 加载一个 language/table，网络失败时保留最后有效缓存。
-    func load(baseURL: URL, language: String, table: String) async -> LoadedDocument {
+    func load(baseURL: URL, language: String, table: String, forceRefresh: Bool = true) async -> LoadedDocument {
         let url = Self.documentURL(baseURL: baseURL, language: language, table: table)
-        let cacheFile = cacheFile(for: url)
-        return await Self.fetch(url: url, cacheFile: cacheFile, session: session)
+        await acquire(url)
+        defer { release(url) }
+        guard !Task.isCancelled else {
+            return LoadedDocument(document: nil, source: nil, warning: nil, isCancelled: true)
+        }
+        if !forceRefresh, let deadline = failures[url], ContinuousClock.now < deadline {
+            let document = Self.readCache(at: cacheFile(for: url)).document
+            return LoadedDocument(document: document, source: document == nil ? nil : .cache,
+                                  warning: "Translation fetch is cooling down after failure", isCancelled: false)
+        }
+        let result = await Self.fetch(url: url, cacheFile: cacheFile(for: url), session: session)
+        if !result.isCancelled && result.warning != nil && result.source != .network {
+            failures[url] = ContinuousClock.now.advanced(by: failureCooldown)
+        } else if !result.isCancelled {
+            failures[url] = nil
+        }
+        return result
+    }
+
+    /// 同一 URL 顺序执行请求与缓存写入，不同 namespace 保持并行。
+    private func acquire(_ url: URL) async {
+        if waiters[url] == nil {
+            waiters[url] = []
+        } else {
+            await withCheckedContinuation { waiters[url, default: []].append($0) }
+        }
+    }
+
+    /// 将请求执行权移交给下一个等待者，取消者在获得执行权后直接退出。
+    private func release(_ url: URL) {
+        guard var queue = waiters[url], !queue.isEmpty else {
+            waiters[url] = nil
+            return
+        }
+        let continuation = queue.removeFirst()
+        waiters[url] = queue
+        continuation.resume()
     }
 
     /// 只读取一个 language/table 的有效磁盘缓存，不发起网络请求。

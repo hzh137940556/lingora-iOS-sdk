@@ -9,6 +9,9 @@ public final class Lingora {
     public private(set) var isInitialized = false
     public private(set) var lastFetchDate: Date?
     public private(set) var lastFetchSource: LingoraFetchSource?
+    public private(set) var loadState: LingoraLoadState = .idle {
+        didSet { stateContinuations.values.forEach { $0.yield(loadState) } }
+    }
 
     private var configuration: LingoraConfiguration?
     private var currentLocale = Locale.current
@@ -17,6 +20,8 @@ public final class Lingora {
     private var updateContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
     private var logContinuations: [UUID: AsyncStream<LingoraLogMessage>.Continuation] = [:]
     private var generation: UInt64 = 0
+    private var fetchSequences: [String: UInt64] = [:]
+    private var stateContinuations: [UUID: AsyncStream<LingoraLoadState>.Continuation] = [:]
     private let store: ContentDeliveryStore
     private let bundledStore = BundledTranslationStore()
     private var bundledTranslationsDirectory: String?
@@ -84,6 +89,7 @@ public final class Lingora {
         isInitialized = true
         lastFetchDate = nil
         lastFetchSource = nil
+        loadState = .idle
         if enableSwizzling {
             BundleSwizzler.enable()
         }
@@ -92,7 +98,7 @@ public final class Lingora {
     }
 
     /// 获取当前语言或预取指定语言；预取不会切换当前展示语言。
-    public func remoteFetch(language: String? = nil) async {
+    public func remoteFetch(language: String? = nil, forceRefresh: Bool = true) async {
         guard let configuration, let activeLanguage = currentLanguage else {
             emit(.error, "Lingora must be initialized before remoteFetch")
             return
@@ -104,18 +110,23 @@ public final class Lingora {
             return
         }
         let requestedGeneration = generation
+        fetchSequences[requestedLanguage, default: 0] &+= 1
+        let sequence = fetchSequences[requestedLanguage]!
+        if !isPrefetch { loadState = .loading }
         let tables = Self.tables(for: configuration)
         let store = self.store
         let baseURL = configuration.contentDeliveryURL
         var loaded: [String: (TranslationDocument, LingoraFetchSource)] = [:]
         var cancelled = false
+        var failedTables: [String] = []
         await withTaskGroup(of: (String, LoadedDocument).self) { group in
             for table in tables {
                 group.addTask {
                     let result = await store.load(
                         baseURL: baseURL,
                         language: requestedLanguage,
-                        table: table
+                        table: table,
+                        forceRefresh: forceRefresh
                     )
                     return (table, result)
                 }
@@ -126,19 +137,24 @@ public final class Lingora {
                     group.cancelAll()
                     continue
                 }
-                if let warning = result.warning { emit(.warning, warning) }
+                if let warning = result.warning {
+                    emit(.warning, warning)
+                    if result.source != .network { failedTables.append(table) }
+                }
                 if let document = result.document, let source = result.source {
                     loaded[table] = (document, source)
                 }
             }
         }
-        guard !Task.isCancelled, !cancelled else { return }
-        guard !isPrefetch,
-              requestedGeneration == generation,
+        guard !isPrefetch, requestedGeneration == generation,
               requestedLanguage == currentLanguage,
-              !loaded.isEmpty
-        else {
-            emit(.debug, "Prefetched language \(requestedLanguage), tables=\(loaded.count)")
+              fetchSequences[requestedLanguage] == sequence else { return }
+        guard !Task.isCancelled, !cancelled else {
+            loadState = .cancelled
+            return
+        }
+        guard !loaded.isEmpty else {
+            loadState = .fallback(failedTables: failedTables.sorted())
             return
         }
         documents.merge(loaded.mapValues(\.0)) { _, new in new }
@@ -146,6 +162,7 @@ public final class Lingora {
         lastFetchSource = loaded.values.contains { $0.1 == .network }
             ? .network
             : .cache
+        loadState = .loaded(source: lastFetchSource!, failedTables: failedTables.sorted())
         notifyTranslationsUpdated()
         emit(.debug, "Fetched language \(requestedLanguage), tables=\(loaded.count)")
     }
@@ -181,8 +198,8 @@ public final class Lingora {
             arguments: arguments,
             table: table,
             locale: locale
-        ) {
-            return Self.render(template, arguments: arguments, locale: locale)
+        ), let rendered = SafeFormatter.render(template, arguments: arguments, locale: locale) {
+            return rendered
         }
         if let directory = bundledTranslationsDirectory,
            let template = bundledStore.template(
@@ -193,8 +210,8 @@ public final class Lingora {
                table: table,
                locale: locale,
                arguments: arguments
-           ) {
-            return Self.render(template, arguments: arguments, locale: locale)
+           ), let rendered = SafeFormatter.render(template, arguments: arguments, locale: locale) {
+            return rendered
         }
         let fallback = Self.localizedString(
             forKey: key,
@@ -212,16 +229,13 @@ public final class Lingora {
         guard Self.isSafePathComponent(resolvedLanguage) else {
             throw LingoraError.unsupportedLocale(locale.identifier)
         }
-        if language == nil, locale != .current,
-           Self.localizedBundle(for: locale, in: .main) == nil {
-            throw LingoraError.unsupportedLocale(locale.identifier)
-        }
         currentLocale = locale
         currentLanguage = resolvedLanguage
         documents = [:]
         generation &+= 1
         lastFetchDate = nil
         lastFetchSource = nil
+        loadState = .idle
         notifyTranslationsUpdated()
         restoreCachedDocuments(language: resolvedLanguage, generation: generation)
     }
@@ -233,6 +247,18 @@ public final class Lingora {
             updateContinuations[id] = continuation
             continuation.onTermination = { @Sendable [weak self] _ in
                 Task { @MainActor in self?.updateContinuations[id] = nil }
+            }
+        }
+    }
+
+    /// 立即发送当前状态，随后发送加载、成功、部分失败或取消状态。
+    public func onLoadStateChanged() -> AsyncStream<LingoraLoadState> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            stateContinuations[id] = continuation
+            continuation.yield(loadState)
+            continuation.onTermination = { @Sendable [weak self] _ in
+                Task { @MainActor in self?.stateContinuations[id] = nil }
             }
         }
     }
@@ -254,6 +280,7 @@ public final class Lingora {
         generation &+= 1
         lastFetchDate = nil
         lastFetchSource = nil
+        loadState = .idle
         try store.clear()
         notifyTranslationsUpdated()
     }
@@ -319,6 +346,9 @@ public final class Lingora {
                 self.lastFetchDate = Date()
                 self.lastFetchSource = .cache
             }
+            if self.loadState == .idle {
+                self.loadState = .loaded(source: .cache, failedTables: [])
+            }
             self.notifyTranslationsUpdated()
             self.emit(.debug, "Restored language \(language) from cache, tables=\(missing.count)")
         }
@@ -350,20 +380,6 @@ public final class Lingora {
     /// 空 namespace 集合使用根文档，否则每个 namespace 对应具名 table。
     private static func tables(for configuration: LingoraConfiguration) -> [String] {
         configuration.namespaces.isEmpty ? [""] : configuration.namespaces.sorted()
-    }
-
-    /// 选择当前 Bundle 中最具体的 locale 资源。
-    private static func localizedBundle(for locale: Locale, in bundle: Bundle) -> Bundle? {
-        let parts = locale.identifier.replacingOccurrences(of: "_", with: "-")
-            .split(separator: "-")
-        for length in stride(from: parts.count, through: 1, by: -1) {
-            let tag = parts.prefix(length).joined(separator: "-")
-            if let path = bundle.path(forResource: tag, ofType: "lproj"),
-               let localized = Bundle(path: path) {
-                return localized
-            }
-        }
-        return nil
     }
 
     /// 按“完整 locale → 基础语言 → Bundle 默认语言”查找本地文案，跳过空目录或缺失 key。
