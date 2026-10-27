@@ -7,7 +7,7 @@ Demo 保持现有 SwiftUI 页面，通过公开 `Lingora` product 展示 `app` �
 
 `sdk-source.json` 是 SDK 来源配置，`make configure-sdk` 将它写入**实际**的
 `LingoraDemo.xcodeproj/project.pbxproj`。切换后日常 Xcode 打开的同一工程直接使用所选来源，
-构建脚本与 IDE 使用同一依赖。当前默认 dev，固定远端版本 `0.1.0-dev.1`；该版本必须完成审批发布后才能构建。
+构建脚本与 IDE 使用同一依赖。当前默认 dev，固定已发布远端版本 [`0.1.0-dev.1`](https://github.com/hzh137940556/lingora-iOS-sdk/releases/tag/0.1.0-dev.1)。
 
 ```json
 {
