@@ -76,12 +76,13 @@ make verify
 普通 PR 和未修改版本文件的分支提交只运行验证。也可在分支同步且工作区干净时手动请求版本：
 
 ```bash
-make publish-dev VERSION=0.1.0-dev.2  # develop
+make publish-dev VERSION=0.1.0-dev.3  # develop
 make publish VERSION=0.1.0            # main
 ```
 
-`sdk-dev.version` 的变更合入 develop 后自动申请 dev 发布，等待环境审批；
-版本文件未变时不重复发版。上述命令仍可手动请求发布，稳定版继续从 main 发起。
+当前 `sdk-dev.version` 请求发布 `0.1.0-dev.3`，变更合入 develop 后自动申请 dev 发布，等待环境审批；
+版本文件未变时不重复发版。Demo 仍固定 `0.1.0-dev.2`，发布不会自动升级 Demo。
+上述命令仍可手动请求发布，稳定版继续从 main 发起。
 
 审批后的 CI 会从已验证 source commit 的 `SDK/` 子树创建 package-only snapshot commit，再创建不可移动
 SemVer Tag。这样仓库开发分支仍保留 Demo 和脚本，而 SwiftPM 按 Tag 拉取时根目录只包含 SDK Package。
