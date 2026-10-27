@@ -44,6 +44,7 @@ make mock_ci
 ```bash
 make sdk-build
 make sdk-test
+make package-test
 make demo-build
 make check-boundaries
 make release-test
@@ -52,6 +53,8 @@ make verify
 
 所有 SDK 命令显式使用 `--package-path SDK`。边界检查同时验证 SwiftPM 只有 `Lingora` 与
 `LingoraTests` 两个 target，以及 Demo 工程只有 `LingoraDemo` 与 `LingoraCommon` 两个 target。
+`package-test` 额外对真实 SDK 的临时 dev/release Tag 执行独立 SwiftPM 解析及 macOS/iOS Simulator
+编译，不使用 Demo、翻译服务或本地 path 依赖。发布后同一检查针对真实远端版本执行。
 
 ## 发布
 

@@ -29,6 +29,49 @@ Lingora 的 iOS 运行时 SDK，负责读取 `APPLE_SDK` Content Delivery、缓�
 ```
 
 Product 和 target 都叫 `Lingora`。版本 Tag 的根目录就是本 Package，不包含 Demo、CLI 或仓库脚本。
+上面的版本仅为格式示例，接入时选择仓库实际已发布的版本。
+
+### 已有 Xcode iOS 工程
+
+1. 打开自己的 `.xcodeproj` 或 `.xcworkspace`，在 Package Dependencies 中添加仓库 URL。
+2. 验收时选择 Exact Version：正式版 `X.Y.Z`，开发版 `X.Y.Z-dev.N`；不要选开发分支，
+   因为开发分支根目录包含整个仓库，Package 根实际位于 `SDK/`。
+3. 将 `Lingora` product 关联到需要 `import Lingora` 的 target。App 与独立 framework 都使用时，
+   分别关联，不复制 SDK 源码。资源仍由调用方 target 自己持有。
+4. 保留 Xcode 生成的 `Package.resolved` 并提交到业务项目，以便 CI 复现版本。
+5. 在主线程初始化，显式调用 `remoteFetch()`，界面使用 `LingoraText` 或更新流。
+
+本地源码联调使用 Add Local Package，选择本仓库的 **`SDK/` 目录**，不是仓库根目录。
+同一工程只保留一个 Lingora 来源；从本地转远端时移除本地引用，再添加远端并关联 product。
+已有 `.strings` / `.stringsdict` 继续作为 fallback，CLI 不是 SDK 的运行时依赖。
+
+### 已有 Swift Package
+
+将以下配置合并到现有 manifest，不覆盖业务 targets。`YourFeature` 替换为实际使用 SDK 的 target：
+
+```swift
+let package = Package(
+    name: "YourFeature",
+    platforms: [.iOS(.v16)],
+    dependencies: [
+        .package(
+            url: "https://github.com/hzh137940556/lingora-iOS-sdk.git",
+            exact: "0.1.0" // 替换为已发布版本
+        ),
+    ],
+    targets: [
+        .target(
+            name: "YourFeature",
+            dependencies: [.product(name: "Lingora", package: "lingora-ios-sdk")]
+        ),
+    ]
+)
+```
+
+本地改用 `.package(name: "Lingora", path: "../lingora-iOS-sdk/SDK")`，对应 product 的
+`package:` 改为 `"Lingora"`。路径按消费工程所在位置调整，两种声明二选一。
+Swift Package 自身携带资源时使用其 `Bundle.module` 传给 `translate` / `LingoraText`；
+framework 则传自己的 Bundle，不能依赖 `.main` 找到其他模块的资源。
 
 ## 最小接入
 

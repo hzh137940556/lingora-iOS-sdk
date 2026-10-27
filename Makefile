@@ -2,7 +2,7 @@
 VERSION ?=
 SDK_CHANNEL ?= release
 
-.PHONY: sdk-build sdk-test demo-build check-boundaries release-test check-version \
+.PHONY: sdk-build sdk-test package-test demo-build check-boundaries release-test check-version \
 	cli-validate cli-push cli-pull mock_ci verify publish-dev publish
 
 sdk-build:
@@ -24,10 +24,14 @@ release-test:
 check-version:
 	@python3 scripts/sdk_release.py info --version "$(VERSION)" --channel "$(SDK_CHANNEL)"
 
+package-test:
+	python3 scripts/verify_sdk_package.py --fixture --channel dev --version 0.0.0-dev.1
+	python3 scripts/verify_sdk_package.py --fixture --channel release --version 0.0.0
+
 cli-validate cli-push cli-pull mock_ci:
 	$(MAKE) -C Demo $@
 
-verify: check-boundaries release-test sdk-build sdk-test demo-build
+verify: check-boundaries release-test sdk-build sdk-test demo-build package-test
 
 publish-dev:
 	python3 scripts/sdk_release.py publish --channel dev --version "$(VERSION)"
