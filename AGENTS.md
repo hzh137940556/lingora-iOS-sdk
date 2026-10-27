@@ -16,6 +16,7 @@
 - `SDK/Sources/Lingora` 不得读取 Demo、CLI 配置、App Bundle ID 或 Demo 的 Content Delivery URL；`SDK/` 不得包含仓库级脚本或 Demo 文件。
 - 公共 API 保持 Tolgee 风格的 singleton、`initialize`、`remoteFetch`、`translate`、locale 切换和更新流。
 - 网络或无效远端数据不得清空最后有效翻译；缓存写入使用原子替换。
+- 可选 Bundle APPLE_SDK JSON 只能读取调用方 Bundle，按语言/namespace 隔离并复用文档校验；默认关闭，不影响 CLI、服务端或系统资源回退。
 - swizzling 默认关闭，只接管普通字符串；plural fallback 继续交给系统资源。
 
 ## Demo 与 CLI 边界
