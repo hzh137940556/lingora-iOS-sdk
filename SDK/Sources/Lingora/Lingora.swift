@@ -18,6 +18,8 @@ public final class Lingora {
     private var logContinuations: [UUID: AsyncStream<LingoraLogMessage>.Continuation] = [:]
     private var generation: UInt64 = 0
     private let store: ContentDeliveryStore
+    private let bundledStore = BundledTranslationStore()
+    private var bundledTranslationsDirectory: String?
 
     /// 创建共享实例或可注入依赖的测试实例。
     init(
@@ -38,14 +40,15 @@ public final class Lingora {
         )
     }
 
-    /// 初始化 Content Delivery、语言和 namespace；无效配置保持未初始化状态。
+    /// 初始化 Content Delivery、语言、namespace 和可选 Bundle JSON 目录；无效配置不启用。
     public func initialize(
         contentDeliveryURL: URL,
         locale: Locale = .current,
         language: String? = nil,
         namespaces: Set<String> = [],
         enableDebugLogs: Bool = false,
-        enableSwizzling: Bool = false
+        enableSwizzling: Bool = false,
+        bundledTranslationsDirectory: String? = nil
     ) {
         guard configuration == nil else {
             emit(.debug, "Repeated initialize call was ignored")
@@ -53,6 +56,10 @@ public final class Lingora {
         }
         guard Self.isSafeHTTPURL(contentDeliveryURL) else {
             emit(.error, "Content Delivery URL must be a credential-free HTTP(S) URL")
+            return
+        }
+        if let directory = bundledTranslationsDirectory, !Self.isSafePathComponent(directory) {
+            emit(.error, "Bundled translation directory must be a safe path component")
             return
         }
         let resolvedLanguage = language ?? Self.languageTag(for: locale)
@@ -69,6 +76,7 @@ public final class Lingora {
             namespaces: namespaces,
             enableDebugLogs: enableDebugLogs
         )
+        self.bundledTranslationsDirectory = bundledTranslationsDirectory
         currentLocale = locale
         currentLanguage = resolvedLanguage
         documents = [:]
@@ -142,7 +150,7 @@ public final class Lingora {
         emit(.debug, "Fetched language \(requestedLanguage), tables=\(loaded.count)")
     }
 
-    /// 返回远端翻译；缺失或不兼容时使用指定 Bundle/Table 的系统资源。
+    /// 依次查找远端、可选 Bundle JSON 和指定 Bundle/Table 的系统资源。
     public func translate(
         _ key: String,
         _ arguments: CVarArg...,
@@ -174,6 +182,18 @@ public final class Lingora {
             table: table,
             locale: locale
         ) {
+            return Self.render(template, arguments: arguments, locale: locale)
+        }
+        if let directory = bundledTranslationsDirectory,
+           let template = bundledStore.template(
+               for: key,
+               bundle: bundle,
+               directory: directory,
+               language: currentLanguage ?? Self.languageTag(for: locale),
+               table: table,
+               locale: locale,
+               arguments: arguments
+           ) {
             return Self.render(template, arguments: arguments, locale: locale)
         }
         let fallback = Self.localizedString(
@@ -228,7 +248,7 @@ public final class Lingora {
         }
     }
 
-    /// 清空内存和当前 App 版本的磁盘缓存。
+    /// 清空远端内存和当前 App 版本的磁盘缓存，保留不可变 Bundle 资源。
     public func clearCache() throws {
         documents = [:]
         generation &+= 1
