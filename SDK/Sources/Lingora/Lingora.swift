@@ -210,7 +210,11 @@ public final class Lingora {
             return
         }
         guard !loaded.isEmpty else {
-            loadState = .fallback(failedTables: failedTables.sorted())
+            if onlyMissing, !documents.isEmpty, let source = lastFetchSource {
+                loadState = .loaded(source: source, failedTables: failedTables.sorted())
+            } else {
+                loadState = .fallback(failedTables: failedTables.sorted())
+            }
             return
         }
         if resolvedLanguage != documentLanguage { documents = [:] }

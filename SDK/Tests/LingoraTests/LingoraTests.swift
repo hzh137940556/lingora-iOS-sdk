@@ -931,6 +931,7 @@ final class LingoraTests: XCTestCase {
         await sdk.preload()
         XCTAssertEqual(MockURLProtocol.requestCount, 2)
         XCTAssertEqual(sdk.translate("welcome"), "app")
+        XCTAssertEqual(sdk.loadState, .loaded(source: .network, failedTables: ["common"]))
     }
 
     /// 创建只使用 MockURLProtocol 的会话。
