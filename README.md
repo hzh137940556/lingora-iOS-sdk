@@ -16,7 +16,7 @@ scripts/                     仓库边界和发布脚本，不进入 Package
 Demo 通过 `Demo/sdk-source.json` 选择 local/dev/release，并由配置命令更新实际 Xcode 工程。
 local 引用 `../SDK`，dev/release 引用远端精确版本；两者都只链接公开 `Lingora` product，不回退源码。
 切换示例：`make demo-configure SDK_MODE=dev SDK_VERSION=X.Y.Z-dev.N`，随后重新打开 Demo 工程。
-当前默认 local；远端版本需要实际发布后使用。
+当前默认 dev，固定远端版本 `0.1.0-dev.1`；日常 Xcode 与命令行构建使用同一配置，解析失败不会回退本地源码。
 
 SDK 的安装与公开 API 说明见 [SDK/README.md](SDK/README.md)。
 本地/远端 Package 消费、CLI 命令和资源打包见 [Demo 接入指南](Demo/README.md)。

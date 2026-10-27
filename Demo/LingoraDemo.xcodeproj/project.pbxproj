@@ -456,12 +456,16 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
+/* Begin XCRemoteSwiftPackageReference section */
 		800000000000000000000001 /* Lingora SDK */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = "../SDK";
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/hzh137940556/lingora-iOS-sdk.git";
+			requirement = {
+				kind = exactVersion;
+				version = "0.1.0-dev.1";
+			};
 		};
-/* End XCLocalSwiftPackageReference section */
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		900000000000000000000001 /* Lingora */ = {

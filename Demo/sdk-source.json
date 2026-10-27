@@ -1,6 +1,6 @@
 {
-  "mode": "local",
-  "version": "",
+  "mode": "dev",
+  "version": "0.1.0-dev.1",
   "repositoryURL": "https://github.com/hzh137940556/lingora-iOS-sdk.git",
   "localPath": "../SDK"
 }
