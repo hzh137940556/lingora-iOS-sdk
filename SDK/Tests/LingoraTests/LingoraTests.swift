@@ -31,6 +31,15 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var requests: [URLRequest] = []
     nonisolated(unsafe) static var error: Error?
     private static let lock = NSLock()
+    private let responseLock = NSLock()
+    private var responseWork: DispatchWorkItem?
+
+    /// 在锁内读取请求数，供异步并发测试等待网络开始。
+    static var requestCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return requests.count
+    }
 
     /// 接受所有测试请求。
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -62,20 +71,28 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
             return
         }
-        if item.delay > 0 { Thread.sleep(forTimeInterval: item.delay) }
-        let response = HTTPURLResponse(
-            url: request.url!,
-            statusCode: item.status,
-            httpVersion: "HTTP/1.1",
-            headerFields: item.headers
-        )!
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: item.data)
-        client?.urlProtocolDidFinishLoading(self)
+        let work = DispatchWorkItem { [self] in
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: item.status,
+                httpVersion: "HTTP/1.1", headerFields: item.headers
+            )!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: item.data)
+            client?.urlProtocolDidFinishLoading(self)
+        }
+        responseLock.lock()
+        responseWork = work
+        responseLock.unlock()
+        DispatchQueue.global().asyncAfter(deadline: .now() + item.delay, execute: work)
     }
 
-    /// 测试响应无需取消额外工作。
-    override func stopLoading() {}
+    /// 取消尚未发送的延迟响应，允许真实模拟乱序网络完成。
+    override func stopLoading() {
+        responseLock.lock()
+        responseWork?.cancel()
+        responseLock.unlock()
+    }
+
 }
 
 /// 覆盖主线程公开 API 和 Content Delivery 行为。
@@ -377,6 +394,130 @@ final class LingoraTests: XCTestCase {
         XCTAssertFalse(invalid.isInitialized)
     }
 
+    /// 新版 JSON 语言无需在 main Bundle 的 lproj 中注册，framework 可直接按 locale 切换。
+    func testJSONOnlyLocaleWithoutExplicitLanguage() throws {
+        let bundle = try makeJSONBundle(["Lingora/common/ja.json": #"{"hello":"日本語"}"#])
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, bundledTranslationsDirectory: "Lingora")
+        try sdk.setCustomLocale(Locale(identifier: "ja"))
+        XCTAssertEqual(sdk.translate("hello", table: "common", bundle: bundle), "日本語")
+        XCTAssertThrowsError(try sdk.setCustomLocale(Locale(identifier: "../escape")))
+    }
+
+    /// 错误远端参数回退到 JSON，错误 JSON 参数继续回退原生资源。
+    func testUnsafeTemplatesFallBackWithoutFormatting() async throws {
+        let bundle = try makeJSONBundle([
+            "Lingora/app/en.json": #"{"hello":"Bundle %@","native":"%lld"}"#,
+            "en.lproj/app.strings": #""native" = "Native %@";"#,
+        ])
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!,
+                       locale: Locale(identifier: "en"), language: "en", namespaces: ["app"],
+                       bundledTranslationsDirectory: "Lingora")
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"hello":"%n","native":"%@ %@"}"#.utf8))]
+        await sdk.remoteFetch()
+        XCTAssertEqual(sdk.translate("hello", "iOS", table: "app", bundle: bundle), "Bundle iOS")
+        XCTAssertEqual(sdk.translate("native", "iOS", table: "app", bundle: bundle), "Native iOS")
+    }
+
+    /// 同一 URL 的并发刷新按顺序写盘，旧请求不再覆盖最新请求的内存状态。
+    func testConcurrentRefreshKeepsLatestMemoryAndCache() async throws {
+        MockURLProtocol.responses = [
+            .init(status: 200, headers: [:], data: Data(#"{"hello":"old"}"#.utf8), delay: 0.1),
+            .init(status: 200, headers: [:], data: Data(#"{"hello":"new"}"#.utf8)),
+        ]
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        let first = Task { await sdk.remoteFetch() }
+        try await Task.sleep(for: .milliseconds(20))
+        let second = Task { await sdk.remoteFetch() }
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(MockURLProtocol.requestCount, 1, "Same URL must not fetch concurrently")
+        await first.value
+        await second.value
+        XCTAssertEqual(sdk.translate("hello"), "new")
+        XCTAssertEqual(sdk.loadState, .loaded(source: .network, failedTables: []))
+        XCTAssertEqual(MockURLProtocol.requests.count, 2)
+        let restored = Lingora(session: makeSession(), cacheDirectory: temporary)
+        restored.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        let ready = await waitUntil { restored.lastFetchSource == .cache }
+        XCTAssertTrue(ready)
+        XCTAssertEqual(restored.translate("hello"), "new")
+    }
+
+    /// 加载状态发送初始值，冷却不重复请求，显式刷新可立即重试且成功后清除冷却。
+    func testLoadStatesAndFailureCooldown() async throws {
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        var states = sdk.onLoadStateChanged().makeAsyncIterator()
+        let initial = await states.next()
+        XCTAssertEqual(initial, .idle)
+        MockURLProtocol.responses = [.init(status: 404, headers: [:], data: Data())]
+        await sdk.remoteFetch(forceRefresh: false)
+        let loading = await states.next()
+        let failed = await states.next()
+        XCTAssertEqual(loading, .loading)
+        XCTAssertEqual(failed, .fallback(failedTables: [""]))
+        await sdk.remoteFetch(forceRefresh: false)
+        XCTAssertEqual(MockURLProtocol.requests.count, 1)
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"hello":"recovered"}"#.utf8))]
+        await sdk.remoteFetch()
+        XCTAssertEqual(MockURLProtocol.requests.count, 2)
+        XCTAssertEqual(sdk.translate("hello"), "recovered")
+        XCTAssertEqual(sdk.loadState, .loaded(source: .network, failedTables: []))
+        try sdk.clearCache()
+        XCTAssertEqual(sdk.loadState, .idle)
+    }
+
+    /// 冷却到期后恢复请求；同一 namespace 的失败不阻塞另一个 namespace。
+    func testCooldownExpiryAndNamespaceIsolation() async throws {
+        let store = ContentDeliveryStore(cacheDirectory: temporary, session: makeSession(), appVersion: "1", failureCooldown: .milliseconds(20))
+        let base = URL(string: "https://cdn.example.com")!
+        MockURLProtocol.responses = [.init(status: 404, headers: [:], data: Data()),
+            .init(status: 200, headers: [:], data: Data(#"{"hello":"common"}"#.utf8)),
+            .init(status: 200, headers: [:], data: Data(#"{"hello":"app"}"#.utf8))]
+        _ = await store.load(baseURL: base, language: "en", table: "app", forceRefresh: false)
+        let common = await store.load(baseURL: base, language: "en", table: "common", forceRefresh: false)
+        XCTAssertEqual(common.source, .network)
+        try await Task.sleep(for: .milliseconds(30))
+        let app = await store.load(baseURL: base, language: "en", table: "app", forceRefresh: false)
+        XCTAssertEqual(app.source, .network)
+        XCTAssertEqual(MockURLProtocol.requests.count, 3)
+    }
+
+    /// 取消排队中的刷新不会再发请求，也不能将旧请求结果应用为新请求成功。
+    func testCancelledQueuedRefreshDoesNotFetch() async throws {
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"hello":"old"}"#.utf8), delay: 0.1)]
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        let first = Task { await sdk.remoteFetch() }
+        try await Task.sleep(for: .milliseconds(20))
+        let queued = Task { await sdk.remoteFetch() }
+        try await Task.sleep(for: .milliseconds(10))
+        queued.cancel()
+        await first.value
+        await queued.value
+        XCTAssertEqual(MockURLProtocol.requests.count, 1)
+        XCTAssertEqual(sdk.loadState, .cancelled)
+    }
+
+    /// 失败冷却只缓存截止时间，清理磁盘后不能从冷却结果复活旧文档。
+    func testCooldownDoesNotRetainClearedCache() async throws {
+        let store = ContentDeliveryStore(cacheDirectory: temporary, session: makeSession(), appVersion: "1")
+        let base = URL(string: "https://cdn.example.com")!
+        MockURLProtocol.responses = [
+            .init(status: 200, headers: [:], data: Data(#"{"hello":"old"}"#.utf8)),
+            .init(status: 404, headers: [:], data: Data()),
+        ]
+        _ = await store.load(baseURL: base, language: "en", table: "app")
+        let failure = await store.load(baseURL: base, language: "en", table: "app", forceRefresh: false)
+        XCTAssertEqual(failure.source, .cache)
+        try store.clear()
+        let cooling = await store.load(baseURL: base, language: "en", table: "app", forceRefresh: false)
+        XCTAssertNil(cooling.document)
+        XCTAssertEqual(MockURLProtocol.requests.count, 2)
+    }
+
     /// 默认不启用全局 Bundle swizzling。
     func testSwizzlingIsOptIn() {
         XCTAssertFalse(BundleSwizzler.isEnabled)
@@ -468,6 +609,7 @@ final class LingoraTests: XCTestCase {
         XCTAssertEqual(namespaced.translate("shared", table: "app"), "app value")
         XCTAssertEqual(namespaced.translate("shared", table: "common"), "shared")
         XCTAssertEqual(namespaced.lastFetchSource, .network)
+        XCTAssertEqual(namespaced.loadState, .loaded(source: .network, failedTables: ["common"]))
         XCTAssertEqual(MockURLProtocol.requests.filter { $0.url?.path == "/common/en.json" }.count, 2)
     }
 
