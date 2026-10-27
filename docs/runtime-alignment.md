@@ -7,7 +7,7 @@ Demo 仍固定消费 `0.1.0-dev.2`；新增 API 的源码测试不代表该已�
 | --- | --- | --- |
 | preload / refresh | preload / remoteFetch | 保留已发布 iOS 方法名 |
 | tFlow 订阅及切换时按需加载 | LingoraText / LingoraSwiftUIUpdater 调用 preload | 使用 SwiftUI 生命周期，普通 translate 不联网 |
-| 已加载文档复用、5 秒失败冷却 | 共享 preload、只补缺失 namespace、5 秒冷却 | 切换/清缓存使用 iOS generation 保护 |
+| 按语言＋namespace 复用文档、5 秒失败冷却 | 同维度隔离文档及加载标记，切回语言复用内存 | 磁盘恢复后首次 preload 仍检查网络；清理使用代次及磁盘写入屏障 |
 | loadMutex 协调 preload / refresh | 加载批次串行、取得执行权后重查缺失项 | 批次内 namespace 并行，SwiftUI 独立监听缓存与语言更新 |
 | manifest 提供已发布语言 | availableLanguages 参数 | Apple Delivery 无 manifest，不实现闲置目录下载配置 |
 | 精确、显式 script/region、基础语言、defaultLanguage | 同样候选顺序及默认语言行为 | 显式 language 保留 iOS 精确请求兼容性 |

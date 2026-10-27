@@ -16,6 +16,37 @@ private struct CacheEntry: Codable {
     let lastModified: String?
 }
 
+/// 同步清理 API 与异步请求共享的缓存屏障；锁只覆盖代次及磁盘操作，不覆盖网络等待。
+private final class CacheBarrier: @unchecked Sendable {
+    private let lock = NSLock()
+    private var epoch: UInt64 = 0
+
+    /// 读取请求所属代次。
+    var generation: UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return epoch
+    }
+
+    /// 只允许当前代次读取或提交缓存，与 clear 使用同一把锁。
+    func perform<T>(generation: UInt64, _ operation: () throws -> T) rethrows -> T? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard epoch == generation else { return nil }
+        return try operation()
+    }
+
+    /// 先使所有旧请求失效，再删除磁盘；删除失败也不能让旧请求继续写入。
+    func clear(directory: URL) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        epoch &+= 1
+        if FileManager.default.fileExists(atPath: directory.path) {
+            try FileManager.default.removeItem(at: directory)
+        }
+    }
+}
+
 /// 隔离 Content Delivery 的磁盘与网络 I/O。
 actor ContentDeliveryStore {
     private let cacheDirectory: URL
@@ -24,6 +55,11 @@ actor ContentDeliveryStore {
     private let failureCooldown: Duration
     private var waiters: [URL: [CheckedContinuation<Void, Never>]] = [:]
     private var failures: [URL: ContinuousClock.Instant] = [:]
+    private var failureGeneration: UInt64 = 0
+    private nonisolated let cacheBarrier = CacheBarrier()
+
+    /// 在生成网络子任务前捕获代次，防止清理前创建的任务延迟启动后写回缓存。
+    nonisolated var cacheGeneration: UInt64 { cacheBarrier.generation }
 
     /// 注入网络会话和缓存目录，便于隔离测试。
     init(cacheDirectory: URL, session: URLSession, appVersion: String, failureCooldown: Duration = .seconds(5)) {
@@ -34,19 +70,27 @@ actor ContentDeliveryStore {
     }
 
     /// 加载一个 language/table，网络失败时保留最后有效缓存。
-    func load(baseURL: URL, language: String, table: String, forceRefresh: Bool = true) async -> LoadedDocument {
+    func load(baseURL: URL, language: String, table: String, forceRefresh: Bool = true, cacheGeneration: UInt64? = nil) async -> LoadedDocument {
+        let generation = cacheGeneration ?? self.cacheGeneration
         let url = Self.documentURL(baseURL: baseURL, language: language, table: table)
         await acquire(url)
         defer { release(url) }
-        guard !Task.isCancelled else {
+        guard !Task.isCancelled, generation == self.cacheGeneration else {
             return LoadedDocument(document: nil, source: nil, warning: nil, isCancelled: true)
         }
+        if failureGeneration != generation {
+            failures = [:]
+            failureGeneration = generation
+        }
         if !forceRefresh, let deadline = failures[url], ContinuousClock.now < deadline {
-            let document = Self.readCache(at: cacheFile(for: url)).document
+            let document = cacheBarrier.perform(generation: generation) { Self.readCache(at: cacheFile(for: url)).document } ?? nil
             return LoadedDocument(document: document, source: document == nil ? nil : .cache,
                                   warning: "Translation fetch is cooling down after failure", isCancelled: false)
         }
-        let result = await Self.fetch(url: url, cacheFile: cacheFile(for: url), session: session)
+        let result = await Self.fetch(url: url, cacheFile: cacheFile(for: url), session: session, barrier: cacheBarrier, generation: generation)
+        guard generation == self.cacheGeneration else {
+            return LoadedDocument(document: nil, source: nil, warning: nil, isCancelled: true)
+        }
         if !result.isCancelled && result.warning != nil && result.source != .network {
             failures[url] = ContinuousClock.now.advanced(by: failureCooldown)
         } else if !result.isCancelled {
@@ -78,7 +122,7 @@ actor ContentDeliveryStore {
     /// 只读取一个 language/table 的有效磁盘缓存，不发起网络请求。
     func cached(baseURL: URL, language: String, table: String) -> LoadedDocument? {
         let url = Self.documentURL(baseURL: baseURL, language: language, table: table)
-        guard let document = Self.readCache(at: cacheFile(for: url)).document else {
+        guard let document = cacheBarrier.perform(generation: cacheGeneration, { Self.readCache(at: cacheFile(for: url)).document }) ?? nil else {
             return nil
         }
         return LoadedDocument(
@@ -91,9 +135,7 @@ actor ContentDeliveryStore {
 
     /// 删除当前 SDK 的全部磁盘缓存。
     nonisolated func clear() throws {
-        if FileManager.default.fileExists(atPath: cacheDirectory.path) {
-            try FileManager.default.removeItem(at: cacheDirectory)
-        }
+        try cacheBarrier.clear(directory: cacheDirectory)
     }
 
     /// 生成默认 table 或 namespace table 的公开 URL。
@@ -114,12 +156,16 @@ actor ContentDeliveryStore {
     private static func fetch(
         url: URL,
         cacheFile: URL,
-        session: URLSession
+        session: URLSession,
+        barrier: CacheBarrier,
+        generation: UInt64
     ) async -> LoadedDocument {
-        let cached = readCache(at: cacheFile)
+        guard let cached = barrier.perform(generation: generation, { readCache(at: cacheFile) }) else {
+            return LoadedDocument(document: nil, source: nil, warning: nil, isCancelled: true)
+        }
         var conditional = true
         requestLoop: for attempt in 0...1 {
-            if Task.isCancelled {
+            if Task.isCancelled || barrier.generation != generation {
                 return LoadedDocument(
                     document: nil,
                     source: nil,
@@ -142,7 +188,7 @@ actor ContentDeliveryStore {
             }
             do {
                 let (data, response) = try await session.data(for: request)
-                if Task.isCancelled {
+                if Task.isCancelled || barrier.generation != generation {
                     return LoadedDocument(
                         document: nil,
                         source: nil,
@@ -181,11 +227,16 @@ actor ContentDeliveryStore {
                     lastModified: http.value(forHTTPHeaderField: "Last-Modified")
                 )
                 do {
-                    try FileManager.default.createDirectory(
-                        at: cacheFile.deletingLastPathComponent(),
-                        withIntermediateDirectories: true
-                    )
-                    try JSONEncoder().encode(entry).write(to: cacheFile, options: .atomic)
+                    let written = try barrier.perform(generation: generation) {
+                        try FileManager.default.createDirectory(
+                            at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true
+                        )
+                        try JSONEncoder().encode(entry).write(to: cacheFile, options: .atomic)
+                        return true
+                    }
+                    guard written == true else {
+                        return LoadedDocument(document: nil, source: nil, warning: nil, isCancelled: true)
+                    }
                     return LoadedDocument(
                         document: document,
                         source: .network,

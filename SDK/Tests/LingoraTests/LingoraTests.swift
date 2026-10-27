@@ -528,7 +528,7 @@ final class LingoraTests: XCTestCase {
         XCTAssertEqual(sdk.loadState, .loaded(source: .network, failedTables: []))
     }
 
-    /// 失败冷却只缓存截止时间，清理磁盘后不能从冷却结果复活旧文档。
+    /// 清理磁盘同时使失败冷却失效；下一次 preload 重新请求且不复活旧文档。
     func testCooldownDoesNotRetainClearedCache() async throws {
         let store = ContentDeliveryStore(cacheDirectory: temporary, session: makeSession(), appVersion: "1")
         let base = URL(string: "https://cdn.example.com")!
@@ -542,7 +542,7 @@ final class LingoraTests: XCTestCase {
         try store.clear()
         let cooling = await store.load(baseURL: base, language: "en", table: "app", forceRefresh: false)
         XCTAssertNil(cooling.document)
-        XCTAssertEqual(MockURLProtocol.requests.count, 2)
+        XCTAssertEqual(MockURLProtocol.requests.count, 3)
     }
 
     /// 默认不启用全局 Bundle swizzling。
@@ -1003,6 +1003,151 @@ final class LingoraTests: XCTestCase {
         XCTAssertTrue(completed)
         withExtendedLifetime(subscription) {}
         withExtendedLifetime(updater) {}
+    }
+
+    /// 清理发生在手动刷新期间时，旧请求不得复活磁盘或内存缓存。
+    func testClearDuringManualRefreshDoesNotRepopulateCache() async throws {
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"welcome":"obsolete"}"#.utf8), delay: 0.2)]
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary, appVersion: "1")
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        let fetch = Task { await sdk.remoteFetch() }
+        let started = await waitUntil { MockURLProtocol.requestCount == 1 }
+        XCTAssertTrue(started)
+        let queued = Task { await sdk.remoteFetch() }
+        try await Task.sleep(for: .milliseconds(10))
+        try sdk.clearCache()
+        await fetch.value
+        await queued.value
+        XCTAssertEqual(MockURLProtocol.requestCount, 1)
+        XCTAssertEqual(sdk.loadState, .idle)
+        XCTAssertEqual(sdk.translate("welcome"), "welcome")
+        let store = ContentDeliveryStore(cacheDirectory: temporary, session: makeSession(), appVersion: "1")
+        let cached = await store.cached(baseURL: URL(string: "https://cdn.example.com")!, language: "en", table: "")
+        XCTAssertNil(cached, "A request invalidated by clearCache must not restore the cleared disk cache")
+    }
+
+    /// 自动匹配与显式语言交替加载时，每种语言独立保留 namespace 和已加载标记。
+    func testExplicitLanguageDoesNotPoisonMissingNamespaceTracking() async throws {
+        MockURLProtocol.responsesByPath = [
+            "/app/en.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"app-base"}"#.utf8))],
+            "/common/en.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"common-base"}"#.utf8))],
+            "/app/en-US.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"app-exact"}"#.utf8))],
+            "/common/en-US.json": [.init(status: 404, headers: [:], data: Data())]
+        ]
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, locale: Locale(identifier: "en-US"), namespaces: ["app", "common"], availableLanguages: ["en"])
+        await sdk.preload()
+        XCTAssertEqual(sdk.translate("welcome", table: "common"), "common-base")
+        await sdk.remoteFetch(language: "en-US")
+        XCTAssertEqual(sdk.translate("welcome", table: "app"), "app-exact")
+        XCTAssertEqual(sdk.translate("welcome", table: "common"), "welcome")
+        await sdk.preload()
+        XCTAssertEqual(sdk.translate("welcome", table: "app"), "app-base")
+        XCTAssertEqual(MockURLProtocol.requestCount, 4)
+        XCTAssertEqual(sdk.translate("welcome", table: "common"), "common-base", "A table discarded with a different resolved language must not remain marked loaded")
+    }
+
+    /// 切回已加载语言直接复用内存，namespace 不跨语言混用；清理后必须重新加载。
+    func testLocaleSwitchReusesLanguageNamespaceDocuments() async throws {
+        MockURLProtocol.responsesByPath = [
+            "/app/en.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"app-en"}"#.utf8))],
+            "/common/en.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"common-en"}"#.utf8))],
+            "/app/ja.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"app-ja"}"#.utf8))],
+            "/common/ja.json": [.init(status: 404, headers: [:], data: Data())]
+        ]
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en", namespaces: ["app", "common"])
+        await sdk.preload()
+        try sdk.setCustomLocale(Locale(identifier: "ja"), language: "ja")
+        await sdk.preload()
+        XCTAssertEqual(sdk.translate("welcome", table: "app"), "app-ja")
+        XCTAssertEqual(sdk.translate("welcome", table: "common"), "welcome")
+        try sdk.setCustomLocale(Locale(identifier: "en"), language: "en")
+        XCTAssertEqual(sdk.translate("welcome", table: "common"), "common-en")
+        await sdk.preload()
+        XCTAssertEqual(MockURLProtocol.requestCount, 4)
+        try sdk.clearCache()
+        XCTAssertEqual(sdk.translate("welcome", table: "common"), "welcome")
+        await sdk.preload()
+        XCTAssertEqual(MockURLProtocol.requestCount, 6)
+    }
+
+    /// 清理使在途、排队及尚未启动的旧代次请求全部失效，覆盖 200、304 和失败回退。
+    func testClearInvalidatesInFlightQueuedAndDeferredCacheLoads() async throws {
+        let base = URL(string: "https://cdn.example.com")!
+        for status in [200, 304, 404] {
+            let store = ContentDeliveryStore(cacheDirectory: temporary.appendingPathComponent(String(status)), session: makeSession(), appVersion: "1")
+            MockURLProtocol.responses = [
+                .init(status: 200, headers: ["ETag": "old"], data: Data(#"{"welcome":"cached"}"#.utf8)),
+                .init(status: status, headers: [:], data: Data(#"{"welcome":"obsolete"}"#.utf8), delay: 0.15)
+            ]
+            _ = await store.load(baseURL: base, language: "en", table: "")
+            let generation = store.cacheGeneration
+            let count = MockURLProtocol.requestCount
+            let first = Task { await store.load(baseURL: base, language: "en", table: "") }
+            let started = await waitUntil { MockURLProtocol.requestCount == count + 1 }
+            XCTAssertTrue(started)
+            let queued = Task { await store.load(baseURL: base, language: "en", table: "", cacheGeneration: generation) }
+            try await Task.sleep(for: .milliseconds(10))
+            try store.clear()
+            let result = await first.value
+            let queuedResult = await queued.value
+            XCTAssertTrue(result.isCancelled)
+            XCTAssertNil(result.document)
+            XCTAssertTrue(queuedResult.isCancelled)
+            let cached = await store.cached(baseURL: base, language: "en", table: "")
+            XCTAssertNil(cached)
+            let deferred = await store.load(baseURL: base, language: "en", table: "", cacheGeneration: generation)
+            XCTAssertTrue(deferred.isCancelled)
+            XCTAssertEqual(MockURLProtocol.requestCount, count + 1)
+            MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"welcome":"fresh"}"#.utf8))]
+            let fresh = await store.load(baseURL: base, language: "en", table: "", forceRefresh: false)
+            XCTAssertEqual(fresh.source, .network)
+            XCTAssertNil(MockURLProtocol.requests.last?.value(forHTTPHeaderField: "If-None-Match"))
+            let saved = await store.cached(baseURL: base, language: "en", table: "")
+            XCTAssertEqual(saved?.document?.values["welcome"], .text("fresh"))
+        }
+    }
+
+    /// 显式请求的文档语言全部失败时，仍显示最后有效的匹配语言文档。
+    func testFailedExactRefreshRetainsMatchedDocuments() async {
+        MockURLProtocol.responsesByPath = [
+            "/app/en.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"matched"}"#.utf8))],
+            "/app/en-US.json": [.init(status: 404, headers: [:], data: Data())]
+        ]
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, locale: Locale(identifier: "en-US"), defaultNamespace: "app", availableLanguages: ["en"])
+        await sdk.preload()
+        await sdk.remoteFetch(language: "en-US")
+        XCTAssertEqual(sdk.translate("welcome"), "matched")
+        XCTAssertEqual(sdk.resolvedLanguage, "en")
+        XCTAssertEqual(sdk.loadState, .fallback(failedTables: ["app"]))
+        await sdk.preload()
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+    }
+
+    /// 切走时完成的手动刷新更新原语言缓存，切回时不能因已加载标记而永久停留在旧值。
+    func testRefreshCompletingAfterLocaleSwitchUpdatesOnlyItsLanguage() async throws {
+        MockURLProtocol.responsesByPath = [
+            "/en.json": [
+                .init(status: 200, headers: [:], data: Data(#"{"welcome":"old"}"#.utf8)),
+                .init(status: 200, headers: [:], data: Data(#"{"welcome":"fresh"}"#.utf8), delay: 0.15)
+            ]
+        ]
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        await sdk.preload()
+        let refresh = Task { await sdk.remoteFetch() }
+        let started = await waitUntil { MockURLProtocol.requestCount == 2 }
+        XCTAssertTrue(started)
+        try sdk.setCustomLocale(Locale(identifier: "ja"), language: "ja")
+        await refresh.value
+        XCTAssertEqual(sdk.translate("welcome"), "welcome")
+        XCTAssertEqual(sdk.loadState, .idle)
+        try sdk.setCustomLocale(Locale(identifier: "en"), language: "en")
+        XCTAssertEqual(sdk.translate("welcome"), "fresh")
+        await sdk.preload()
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
     }
 
     /// 创建只使用 MockURLProtocol 的会话。

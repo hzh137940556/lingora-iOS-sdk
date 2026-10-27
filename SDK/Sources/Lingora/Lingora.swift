@@ -19,12 +19,23 @@ public final class Lingora {
     private var defaultLanguage: String?
     private var explicitLanguage = false
     private var defaultNamespace: String?
-    private var fetchedTables: Set<String> = []
+    /// 与 Android 一样按实际文档语言和 namespace 隔离内存及加载状态。
+    private struct DocumentKey: Hashable {
+        let language: String
+        let table: String
+    }
+    /// 缓存恢复不视为已检查网络，首次 preload 仍需刷新。
+    private struct StoredDocument {
+        let document: TranslationDocument
+        let source: LingoraFetchSource
+        let date: Date
+        let fetched: Bool
+    }
+    private var loadedDocuments: [DocumentKey: StoredDocument] = [:]
     private var preloadTask: Task<Void, Never>?
     private var configuration: LingoraConfiguration?
     private var currentLocale = Locale.current
     private var currentLanguage: String?
-    private var documents: [String: TranslationDocument] = [:]
     private var updateContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
     private var logContinuations: [UUID: AsyncStream<LingoraLogMessage>.Continuation] = [:]
     private var generation: UInt64 = 0
@@ -113,8 +124,7 @@ public final class Lingora {
         currentLocale = locale
         currentLanguage = resolvedLanguage
         self.resolvedLanguage = nil
-        documents = [:]
-        fetchedTables = []
+        loadedDocuments = [:]
         generation &+= 1
         isInitialized = true
         lastFetchDate = nil
@@ -134,10 +144,8 @@ public final class Lingora {
 
     /// 对齐 Android preload：多个消费者共享一次加载，已加载文档不重复请求，失败冷却后可重试。
     public func preload() async {
-        guard !Task.isCancelled, let configuration else { return }
+        guard !Task.isCancelled, configuration != nil else { return }
         if let task = preloadTask { await task.value; return }
-        let tables = Self.tables(for: configuration)
-        guard !tables.allSatisfy({ fetchedTables.contains($0) }) else { return }
         let expectedGeneration = generation
         let task = Task { [weak self] in
             guard let self, self.generation == expectedGeneration, !Task.isCancelled else { return }
@@ -166,14 +174,22 @@ public final class Lingora {
         defer { releaseLoad() }
         guard !Task.isCancelled, requestedGeneration == generation else { return }
         // 等待其他刷新完成后重新计算缺失项，不让局部预加载使完整刷新失效。
-        let tables = Self.tables(for: configuration).filter { !onlyMissing || !fetchedTables.contains($0) }
-        if onlyMissing && tables.isEmpty { return }
-        if !isPrefetch { loadState = .loading }
         guard let documentLanguage = language != nil || explicitLanguage ? requestedLanguage : matchedLanguage(requestedLanguage) else {
             if !isPrefetch { loadState = .fallback(failedTables: Self.tables(for: configuration)) }
             return
         }
+        let tables = Self.tables(for: configuration).filter {
+            !onlyMissing || loadedDocuments[DocumentKey(language: documentLanguage, table: $0)]?.fetched != true
+        }
+        if onlyMissing && tables.isEmpty {
+            if !isPrefetch, resolvedLanguage != documentLanguage {
+                activateDocuments(language: documentLanguage, failedTables: [])
+            }
+            return
+        }
+        if !isPrefetch { loadState = .loading }
         let store = self.store
+        let cacheGeneration = store.cacheGeneration
         let baseURL = configuration.contentDeliveryURL
         var loaded: [String: (TranslationDocument, LingoraFetchSource)] = [:]
         var cancelled = false
@@ -185,7 +201,7 @@ public final class Lingora {
                         baseURL: baseURL,
                         language: documentLanguage,
                         table: table,
-                        forceRefresh: forceRefresh
+                        forceRefresh: forceRefresh, cacheGeneration: cacheGeneration
                     )
                     return (table, result)
                 }
@@ -205,30 +221,20 @@ public final class Lingora {
                 }
             }
         }
-        guard !isPrefetch, requestedGeneration == generation,
-              requestedLanguage == currentLanguage else { return }
-        guard !Task.isCancelled, !cancelled else {
-            loadState = .cancelled
+        let updatesCurrentRequest = !isPrefetch && requestedGeneration == generation && requestedLanguage == currentLanguage
+        guard !Task.isCancelled, !cancelled, cacheGeneration == store.cacheGeneration else {
+            if updatesCurrentRequest { loadState = .cancelled }
             return
         }
-        guard !loaded.isEmpty else {
-            if onlyMissing, !documents.isEmpty, let source = lastFetchSource {
-                loadState = .loaded(source: source, failedTables: failedTables.sorted())
-            } else {
-                loadState = .fallback(failedTables: failedTables.sorted())
-            }
-            return
+        for (table, value) in loaded {
+            loadedDocuments[DocumentKey(language: documentLanguage, table: table)] = StoredDocument(
+                document: value.0, source: value.1, date: Date(), fetched: true
+            )
         }
-        if resolvedLanguage != documentLanguage { documents = [:] }
-        resolvedLanguage = documentLanguage
-        fetchedTables.formUnion(loaded.keys)
-        documents.merge(loaded.mapValues(\.0)) { _, new in new }
-        lastFetchDate = Date()
-        lastFetchSource = loaded.values.contains { $0.1 == .network }
-            ? .network
-            : .cache
-        loadState = .loaded(source: lastFetchSource!, failedTables: failedTables.sorted())
-        notifyTranslationsUpdated()
+        // 语言切换只改变展示目标，成功的旧语言刷新仍更新其独立缓存；clearCache 则使整个代次失效。
+        guard updatesCurrentRequest || resolvedLanguage == documentLanguage else { return }
+        activateDocuments(language: documentLanguage, failedTables: failedTables.sorted())
+        if !loaded.isEmpty { notifyTranslationsUpdated() }
         emit(.debug, "Fetched language \(requestedLanguage), tables=\(loaded.count)")
     }
 
@@ -333,12 +339,14 @@ public final class Lingora {
         currentLocale = locale
         currentLanguage = resolvedLanguage
         self.resolvedLanguage = nil
-        documents = [:]
-        fetchedTables = []
         generation &+= 1
         lastFetchDate = nil
         lastFetchSource = nil
         loadState = .idle
+        if let documentLanguage = explicitLanguage ? resolvedLanguage : matchedLanguage(resolvedLanguage),
+           loadedDocuments.keys.contains(where: { $0.language == documentLanguage }) {
+            activateDocuments(language: documentLanguage, failedTables: [])
+        }
         notifyTranslationsUpdated()
         restoreCachedDocuments(language: resolvedLanguage, generation: generation)
     }
@@ -382,8 +390,7 @@ public final class Lingora {
         preloadTask?.cancel()
         preloadTask = nil
         resolvedLanguage = nil
-        documents = [:]
-        fetchedTables = []
+        loadedDocuments = [:]
         generation &+= 1
         lastFetchDate = nil
         lastFetchSource = nil
@@ -394,7 +401,7 @@ public final class Lingora {
 
     /// 供可选 Bundle swizzling 查询普通远端文本，避免递归进入 fallback。
     func swizzledTranslation(for key: String, table: String?) -> String? {
-        guard case .text(let text)? = documents[table ?? defaultNamespace ?? ""]?.values[key] else {
+        guard case .text(let text)? = currentDocument(table: table)?.values[key] else {
             return nil
         }
         return text
@@ -407,7 +414,7 @@ public final class Lingora {
         table: String?,
         locale: Locale
     ) -> String? {
-        documents[table ?? defaultNamespace ?? ""]?.template(for: key, locale: locale, arguments: arguments)
+        currentDocument(table: table)?.template(for: key, locale: locale, arguments: arguments)
     }
 
     /// 发送翻译更新事件。
@@ -448,20 +455,47 @@ public final class Lingora {
                   (self.resolvedLanguage == nil || self.resolvedLanguage == documentLanguage),
                   !cached.isEmpty
             else { return }
-            let missing = cached.filter { self.documents[$0.key] == nil }
+            let missing = cached.filter {
+                self.loadedDocuments[DocumentKey(language: documentLanguage, table: $0.key)] == nil
+            }
             guard !missing.isEmpty else { return }
-            self.resolvedLanguage = documentLanguage
-            self.documents.merge(missing) { current, _ in current }
-            if self.lastFetchDate == nil {
-                self.lastFetchDate = Date()
-                self.lastFetchSource = .cache
+            for (table, document) in missing {
+                self.loadedDocuments[DocumentKey(language: documentLanguage, table: table)] = StoredDocument(
+                    document: document, source: .cache, date: Date(), fetched: false
+                )
             }
             if self.loadState == .idle {
-                self.loadState = .loaded(source: .cache, failedTables: [])
+                self.activateDocuments(language: documentLanguage, failedTables: [])
+            } else if self.resolvedLanguage == nil {
+                self.resolvedLanguage = documentLanguage
+                self.lastFetchDate = Date()
+                self.lastFetchSource = .cache
             }
             self.notifyTranslationsUpdated()
             self.emit(.debug, "Restored language \(language) from cache, tables=\(missing.count)")
         }
+    }
+
+    /// 只读取当前实际文档语言，避免不同语言的 namespace 混用。
+    private func currentDocument(table: String?) -> TranslationDocument? {
+        guard let resolvedLanguage else { return nil }
+        return loadedDocuments[DocumentKey(language: resolvedLanguage, table: table ?? defaultNamespace ?? "")]?.document
+    }
+
+    /// 从当前语言的全部已保存文档推导状态；切换文档语言时同步通知消费者。
+    private func activateDocuments(language: String, failedTables: [String]) {
+        let current = loadedDocuments.filter { $0.key.language == language }.map(\.value)
+        guard !current.isEmpty else {
+            loadState = .fallback(failedTables: failedTables)
+            return
+        }
+        let previous = resolvedLanguage
+        resolvedLanguage = language
+        lastFetchDate = current.map(\.date).max()
+        let source: LingoraFetchSource = current.contains { $0.source == .network } ? .network : .cache
+        lastFetchSource = source
+        loadState = .loaded(source: source, failedTables: failedTables)
+        if previous != language { notifyTranslationsUpdated() }
     }
 
     /// 沿用 Android 的候选标签顺序；没有目录时精确请求。
