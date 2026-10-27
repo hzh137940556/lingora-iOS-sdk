@@ -28,7 +28,8 @@ public final class Lingora {
     private var updateContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
     private var logContinuations: [UUID: AsyncStream<LingoraLogMessage>.Continuation] = [:]
     private var generation: UInt64 = 0
-    private var fetchSequences: [String: UInt64] = [:]
+    private var loadLocked = false
+    private var loadWaiters: [(UUID, CheckedContinuation<Bool, Never>)] = []
     private var stateContinuations: [UUID: AsyncStream<LingoraLoadState>.Continuation] = [:]
     private let store: ContentDeliveryStore
     private let bundledStore = BundledTranslationStore()
@@ -160,11 +161,13 @@ public final class Lingora {
             emit(.error, "Fetch language must be a safe path component")
             return
         }
+        let requestedGeneration = generation
+        guard await acquireLoad() else { return }
+        defer { releaseLoad() }
+        guard !Task.isCancelled, requestedGeneration == generation else { return }
+        // 等待其他刷新完成后重新计算缺失项，不让局部预加载使完整刷新失效。
         let tables = Self.tables(for: configuration).filter { !onlyMissing || !fetchedTables.contains($0) }
         if onlyMissing && tables.isEmpty { return }
-        let requestedGeneration = generation
-        fetchSequences[requestedLanguage, default: 0] &+= 1
-        let sequence = fetchSequences[requestedLanguage]!
         if !isPrefetch { loadState = .loading }
         guard let documentLanguage = language != nil || explicitLanguage ? requestedLanguage : matchedLanguage(requestedLanguage) else {
             if !isPrefetch { loadState = .fallback(failedTables: Self.tables(for: configuration)) }
@@ -203,8 +206,7 @@ public final class Lingora {
             }
         }
         guard !isPrefetch, requestedGeneration == generation,
-              requestedLanguage == currentLanguage,
-              fetchSequences[requestedLanguage] == sequence else { return }
+              requestedLanguage == currentLanguage else { return }
         guard !Task.isCancelled, !cancelled else {
             loadState = .cancelled
             return
@@ -228,6 +230,36 @@ public final class Lingora {
         loadState = .loaded(source: lastFetchSource!, failedTables: failedTables.sorted())
         notifyTranslationsUpdated()
         emit(.debug, "Fetched language \(requestedLanguage), tables=\(loaded.count)")
+    }
+
+    /// 对齐 Android loadMutex，串行协调整个加载批次及内存提交；等待取消立即退出。
+    private func acquireLoad() async -> Bool {
+        let id = UUID()
+        return await withTaskCancellationHandler {
+            guard !Task.isCancelled else { return false }
+            if !loadLocked {
+                loadLocked = true
+                return true
+            }
+            return await withCheckedContinuation { loadWaiters.append((id, $0)) }
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.cancelLoadWaiter(id) }
+        }
+    }
+
+    /// 取消尚未取得加载权的请求，不修改正在执行的刷新状态。
+    private func cancelLoadWaiter(_ id: UUID) {
+        guard let index = loadWaiters.firstIndex(where: { $0.0 == id }) else { return }
+        loadWaiters.remove(at: index).1.resume(returning: false)
+    }
+
+    /// FIFO 移交加载权；同批次中的 namespace 请求仍可并行。
+    private func releaseLoad() {
+        if loadWaiters.isEmpty {
+            loadLocked = false
+        } else {
+            loadWaiters.removeFirst().1.resume(returning: true)
+        }
     }
 
     /// 依次查找远端、可选 Bundle JSON 和指定 Bundle/Table 的系统资源。

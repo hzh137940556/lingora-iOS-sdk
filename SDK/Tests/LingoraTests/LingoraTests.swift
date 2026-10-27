@@ -1,6 +1,7 @@
 // 验证 Lingora 公开 API 的网络、缓存、格式化和失败回退。
 import Foundation
 import XCTest
+import Combine
 @testable import Lingora
 
 /// 提供不访问外网的 URLSession 响应。
@@ -486,7 +487,7 @@ final class LingoraTests: XCTestCase {
         XCTAssertEqual(MockURLProtocol.requests.count, 3)
     }
 
-    /// 取消排队中的刷新不会再发请求，也不能将旧请求结果应用为新请求成功。
+    /// 取消排队刷新立即退出，不发请求也不覆盖正在执行的刷新状态。
     func testCancelledQueuedRefreshDoesNotFetch() async throws {
         MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"hello":"old"}"#.utf8), delay: 0.2)]
         let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
@@ -497,10 +498,34 @@ final class LingoraTests: XCTestCase {
         let queued = Task { await sdk.remoteFetch() }
         try await Task.sleep(for: .milliseconds(10))
         queued.cancel()
+        await queued.value
+        XCTAssertEqual(sdk.loadState, .loading)
+        await first.value
+        XCTAssertEqual(MockURLProtocol.requests.count, 1)
+        XCTAssertEqual(sdk.loadState, .loaded(source: .network, failedTables: []))
+        XCTAssertEqual(sdk.translate("hello"), "old")
+    }
+
+    /// 切换语言后，旧语言的排队请求不再联网或覆盖新语言状态。
+    func testLocaleSwitchInvalidatesQueuedRefresh() async throws {
+        MockURLProtocol.responsesByPath = [
+            "/en.json": [.init(status: 200, headers: [:], data: Data(#"{"hello":"old"}"#.utf8), delay: 0.2)],
+            "/ja.json": [.init(status: 200, headers: [:], data: Data(#"{"hello":"new"}"#.utf8))]
+        ]
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        let first = Task { await sdk.remoteFetch() }
+        let started = await waitUntil { MockURLProtocol.requestCount == 1 }
+        XCTAssertTrue(started)
+        let queued = Task { await sdk.remoteFetch() }
+        try await Task.sleep(for: .milliseconds(10))
+        try sdk.setCustomLocale(Locale(identifier: "ja"), language: "ja")
+        await sdk.preload()
         await first.value
         await queued.value
-        XCTAssertEqual(MockURLProtocol.requests.count, 1)
-        XCTAssertEqual(sdk.loadState, .cancelled)
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+        XCTAssertEqual(sdk.translate("hello"), "new")
+        XCTAssertEqual(sdk.loadState, .loaded(source: .network, failedTables: []))
     }
 
     /// 失败冷却只缓存截止时间，清理磁盘后不能从冷却结果复活旧文档。
@@ -932,6 +957,52 @@ final class LingoraTests: XCTestCase {
         XCTAssertEqual(MockURLProtocol.requestCount, 2)
         XCTAssertEqual(sdk.translate("welcome"), "app")
         XCTAssertEqual(sdk.loadState, .loaded(source: .network, failedTables: ["common"]))
+    }
+
+    /// 缺失 namespace 的局部预加载不能丢弃并发完整刷新的有效结果。
+    func testPartialPreloadDoesNotDiscardFullRefresh() async throws {
+        MockURLProtocol.responsesByPath = [
+            "/app/en.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"v1"}"#.utf8))],
+            "/common/en.json": [.init(status: 404, headers: [:], data: Data())]
+        ]
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en", namespaces: ["common"], defaultNamespace: "app")
+        await sdk.preload()
+        MockURLProtocol.responsesByPath = [
+            "/app/en.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"v2"}"#.utf8), delay: 0.3)],
+            "/common/en.json": [.init(status: 404, headers: [:], data: Data())]
+        ]
+        let refresh = Task { await sdk.remoteFetch() }
+        let started = await waitUntil { MockURLProtocol.requestCount == 4 }
+        XCTAssertTrue(started)
+        try await Task.sleep(for: .milliseconds(30))
+        await sdk.preload()
+        await refresh.value
+        XCTAssertEqual(sdk.translate("welcome"), "v2")
+    }
+
+    /// 网络尚未返回时，恢复的磁盘缓存必须立即通知 SwiftUI。
+    func testSwiftUICacheNotificationDoesNotWaitForNetwork() async throws {
+        MockURLProtocol.responses = [
+            .init(status: 200, headers: [:], data: Data(#"{"welcome":"cached"}"#.utf8)),
+            .init(status: 200, headers: [:], data: Data(#"{"welcome":"fresh"}"#.utf8), delay: 0.4)
+        ]
+        let initial = Lingora(session: makeSession(), cacheDirectory: temporary)
+        initial.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        await initial.remoteFetch()
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        let updater = LingoraSwiftUIUpdater(lingora: sdk)
+        var notifications = 0
+        let subscription = updater.objectWillChange.sink { _ in notifications += 1 }
+        let cached = await waitUntil { sdk.translate("welcome") == "cached" }
+        XCTAssertTrue(cached)
+        try await Task.sleep(for: .milliseconds(40))
+        XCTAssertGreaterThan(notifications, 0)
+        let completed = await waitUntil { sdk.translate("welcome") == "fresh" }
+        XCTAssertTrue(completed)
+        withExtendedLifetime(subscription) {}
+        withExtendedLifetime(updater) {}
     }
 
     /// 创建只使用 MockURLProtocol 的会话。

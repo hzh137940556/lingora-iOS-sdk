@@ -151,9 +151,10 @@ Bundle 是不可变资源，SDK 按 Bundle 路径缓存解析及缺失结果，`
 多个消费者共享一次加载，已加载的 namespace 不重复请求；失败冷却 5 秒，主动 remoteFetch 可立即重试。
 不同 namespace 独立保留有效内容，取消不会记作网络失败。
 
-同一 URL 的请求与磁盘写入按顺序执行，不同 namespace 仍可并行；最新一次当前语言刷新
-决定内存和状态，语言切换前的旧请求不会覆盖新语言。排队请求取消后不会发出网络请求，
-但其等待结束时间受前一个请求的完成/超时限制。
+对齐 Android 的 `loadMutex`，预加载和主动刷新按批次串行执行并提交结果，同一批次的不同
+namespace 仍可并行。预加载取得执行权后重新检查缺失项，语言切换前的旧请求不会覆盖新语言。
+排队请求取消后立即退出，不发出网络请求，也不修改正在执行的刷新状态。
+SwiftUI 的更新监听与加载独立执行，恢复的缓存和语言变化通知不必等待网络完成。
 
 `loadState` 与 `onLoadStateChanged()` 提供当前语言的状态：`idle`、`loading`、
 `loaded(source:failedTables:)`、`fallback(failedTables:)` 和 `cancelled`。
