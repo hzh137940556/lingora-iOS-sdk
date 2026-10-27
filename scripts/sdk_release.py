@@ -149,7 +149,19 @@ def create_package_tag(release: Release, source_sha: str) -> str:
     return snapshot
 
 
-# 校验 workflow_dispatch 的分支、SHA 与版本唯一性，审批后仍锁定同一 SDK 快照。
+# 仅 develop 上版本文件的实际变更可以提出自动发布请求。
+def planned_dev_release(ref_name: str, before_sha: str) -> Release | None:
+    if ref_name != "develop":
+        return None
+    if not re.fullmatch(r"[0-9a-f]{40}", before_sha) or before_sha == "0" * 40:
+        raise ValueError("自动发布需要有效的 push before SHA")
+    changed = git("diff", "--name-only", before_sha, "HEAD", "--", "sdk-dev.version")
+    if not changed:
+        return None
+    return Release("dev", (ROOT / "sdk-dev.version").read_text(encoding="utf-8").strip())
+
+
+# 校验发布请求的分支、SHA 与版本唯一性，审批后仍锁定同一 SDK 快照。
 def verify_request(
     release: Release,
     ref_type: str,
@@ -162,7 +174,7 @@ def verify_request(
         raise ValueError(f"{release.channel} 渠道只能从 {release.branch} 分支发起")
     sha = git("rev-parse", "HEAD")
     if sha != expected_sha:
-        raise ValueError("当前代码与 workflow_dispatch 记录的 commit SHA 不一致，禁止发布")
+        raise ValueError("当前代码与发布事件记录的 commit SHA 不一致，禁止发布")
     fetch_source(release, tags=True)
     check_source(release, sha)
     tag_sha = existing_tag_sha(release)
@@ -304,8 +316,17 @@ def main(argv: list[str] | None = None) -> int:
     verify.add_argument("--repository", required=True)
     verify.add_argument("--github-output", type=Path)
     verify.add_argument("--allow-existing-tag", action="store_true")
+    plan = commands.add_parser("plan-dev")
+    plan.add_argument("--ref-name", required=True)
+    plan.add_argument("--before-sha", required=True)
+    plan.add_argument("--github-output", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
+        if args.command == "plan-dev":
+            planned = planned_dev_release(args.ref_name, args.before_sha)
+            if planned is not None:
+                report(planned, output=args.github_output)
+            return 0
         release = Release(args.channel, args.version)
         if args.command == "verify-request":
             sha = verify_request(

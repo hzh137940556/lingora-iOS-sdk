@@ -48,6 +48,7 @@ make mock_ci
 ```bash
 make sdk-build
 make sdk-test
+make package-test
 make demo-build
 make demo-test
 make demo-fixture
@@ -61,15 +62,20 @@ make verify
 `demo-fixture` 用真实 SDK 创建临时 Git Package，分别应用 dev/release 配置，在隔离消费者中构建 Demo、校验双 Bundle
 生成资源；无网络翻译同步，不修改真实版本 Tag。`make verify` 包含这一检查。
 运行时 manifest、语言发现等协议待决项单独记录在 [运行时对齐清单](docs/runtime-alignment.md)。
+`package-test` 额外对真实 SDK 的临时 dev/release Tag 执行独立 SwiftPM 解析及 macOS/iOS Simulator
+编译，不使用 Demo、翻译服务或本地 path 依赖。发布后同一检查针对真实远端版本执行。
 
 ## 发布
 
-PR、`develop` 和 `main` 只运行验证，不自动发布。维护者在分支同步且工作区干净时显式请求版本：
+普通 PR 和未修改版本文件的分支提交只运行验证。也可在分支同步且工作区干净时手动请求版本：
 
 ```bash
 make publish-dev VERSION=0.1.0-dev.1  # develop
 make publish VERSION=0.1.0            # main
 ```
+
+`sdk-dev.version` 的变更合入 develop 后自动申请 dev 发布（首次 `0.1.0-dev.1`），等待环境审批；
+版本文件未变时不重复发版。上述命令仍可手动请求发布，稳定版继续从 main 发起。
 
 审批后的 CI 会从已验证 source commit 的 `SDK/` 子树创建 package-only snapshot commit，再创建不可移动
 SemVer Tag。这样仓库开发分支仍保留 Demo 和脚本，而 SwiftPM 按 Tag 拉取时根目录只包含 SDK Package。
