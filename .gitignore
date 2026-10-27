@@ -5,6 +5,8 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 .DS_Store
+__pycache__/
+*.pyc
 
 # CLI 生成语言资源。
 Demo/LingoraDemo/Generated/

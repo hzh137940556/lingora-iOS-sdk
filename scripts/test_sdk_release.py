@@ -116,6 +116,35 @@ let package = Package(
             ["git", *args], cwd=self.root, text=True, stderr=subprocess.DEVNULL,
         ).strip()
 
+    # 合入版本变更才申请发布；后续无关提交与其他分支均不重复发版。
+    def test_planned_dev_release_only_for_version_changes(self) -> None:
+        self.assertIsNone(sdk.planned_dev_release("develop", self.main_sha))
+        (self.root / "sdk-dev.version").write_text("0.1.0-dev.1\n")
+        self.run_git("add", "sdk-dev.version")
+        self.run_git("commit", "-m", "request first dev release")
+        requested_sha = self.run_git("rev-parse", "HEAD")
+        self.assertEqual(sdk.planned_dev_release("develop", self.dev_sha), sdk.Release("dev", "0.1.0-dev.1"))
+        self.assertIsNone(sdk.planned_dev_release("main", self.dev_sha))
+        self.assertIsNone(sdk.planned_dev_release("feature", self.dev_sha))
+        output = self.root / "outputs"
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(sdk.main(["plan-dev", "--ref-name", "develop", "--before-sha", self.dev_sha,
+                                       "--github-output", str(output)]), 0)
+        self.assertIn("version=0.1.0-dev.1\n", output.read_text())
+        self.run_git("commit", "--allow-empty", "-m", "unrelated change")
+        self.assertIsNone(sdk.planned_dev_release("develop", requested_sha))
+
+    # 非法版本和缺失的 push 起点不能进入审批发布流程。
+    def test_planned_dev_release_rejects_invalid_request(self) -> None:
+        for before in ("0" * 40, "bad-sha"):
+            with self.subTest(before=before), self.assertRaises(ValueError):
+                sdk.planned_dev_release("develop", before)
+        (self.root / "sdk-dev.version").write_text("0.1.0\n")
+        self.run_git("add", "sdk-dev.version")
+        self.run_git("commit", "-m", "invalid dev version")
+        with self.assertRaises(ValueError):
+            sdk.planned_dev_release("develop", self.dev_sha)
+
     # develop 的未合并提交可发 dev，但不能发 release。
     def test_branch_history_controls_channel(self) -> None:
         sdk.check_source(sdk.Release("dev", "0.1.0-dev.1"), self.dev_sha)
