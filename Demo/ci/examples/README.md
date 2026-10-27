@@ -13,7 +13,10 @@
    `ci/check_resources.py`。它只检查 Apple 资源，不是 CLI 实现副本。
 3. 参考 `Demo/ci/lingora.dev.json` 创建 `ci/lingora.production.json`，替换真实业务项目、分支、基础资源
    和目标语言。不得直接使用 Demo 项目上传业务词条。配置不包含密钥。
-4. 将生成目录关联到正确 target，加入 `.gitignore`。不要重复添加同语言同 table 的资源。
+4. pull 使用 `apple-sdk`，布局为 `Lingora/{namespace}/{languageTag}.json`。
+   将生成目录关联到正确 target，保留 Lingora 文件夹层级并加入 `.gitignore`。
+   初始化 SDK 时传入 `bundledTranslationsDirectory: "Lingora"`，framework 翻译传入自己的 Bundle。
+   不要重复添加同语言同 table 的资源。
 5. 按项目修改模板的 `XCODE_PROJECT`、`XCODE_SCHEME`、`APP_OUTPUT`、`COMMON_OUTPUT`。
    模板以 Demo 的 app/common 两个 namespace、LingoraCommon.framework 为起点；若 namespace、framework
    名称或 `.app` product 名称不同，同步修改检查器中的 Bundle 映射和工作流产物路径。
@@ -36,7 +39,7 @@
 - `main` push（含合并）触发，普通 PR 不上传文案。按团队规则配置分支保护与触发分支。
 - 所有写同一翻译目标的工作流使用相同 concurrency group；上传前拒绝旧提交。
 - 固定 CLI → 检查公开 URL / 解析锁定 Package → validate → push → 两个 namespace pull → validate → 必需文件检查 → 使用已解析 Package 构建。
-- 必需文件检查要求配置中每种语言的两个 table 都有非空 `.strings` / `.stringsdict`；按产品语言及
+- 必需文件检查要求配置中每种语言的两个 namespace 都有有效的 APPLE_SDK JSON；按产品语言及
   plural 要求调整。validate 成功或文件非空都不代表全量翻译覆盖。
 - `KEEP` 保留远端已有非空值，不自动更新已修改的英语；pull 使用 TRANSLATED/REVIEWED 时允许未审核译文。
   生产审核策略需按团队要求调整。

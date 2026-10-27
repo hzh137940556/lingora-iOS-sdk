@@ -6,39 +6,40 @@ import argparse
 import json
 from pathlib import Path
 import re
-import subprocess
 
 
-# 使用系统解析器同时支持文本和编译后的 binary plist 资源。
+# 严格检查 SDK JSON 形状，避免不可解析的翻译进入 App 或 framework。
 def read_resource(path: Path) -> dict:
-    result = subprocess.run(
-        ["plutil", "-convert", "json", "-o", "-", str(path)],
-        check=True, capture_output=True, text=True,
-    )
-    value = json.loads(result.stdout)
+    if path.stat().st_size > 10 * 1024 * 1024:
+        raise ValueError(f"Oversized Apple SDK resource: {path}")
+    value = json.loads(path.read_text())
     if not isinstance(value, dict) or not value:
-        raise ValueError(f"Empty Apple resource: {path}")
-    if path.suffix == ".strings":
-        if not all(isinstance(v, str) and v.strip() for v in value.values()):
-            raise ValueError(f"Empty or invalid string: {path}")
-    else:
-        for entry in value.values():
-            if not isinstance(entry, dict) or not entry.get("NSStringLocalizedFormatKey"):
-                raise ValueError(f"Invalid plural: {path}")
-            variables = [v for v in entry.values() if isinstance(v, dict)]
-            if not variables or any(
-                v.get("NSStringFormatSpecTypeKey") != "NSStringPluralRuleType"
-                or not v.get("NSStringFormatValueTypeKey")
-                or not isinstance(v.get("other"), str) or not v["other"].strip()
-                for v in variables
-            ):
-                raise ValueError(f"Missing plural other/type: {path}")
+        raise ValueError(f"Empty Apple SDK resource: {path}")
+    for key, entry in value.items():
+        if not key:
+            raise ValueError(f"Empty translation key: {path}")
+        if isinstance(entry, str) and entry.strip():
+            continue
+        if not isinstance(entry, dict) or set(entry) != {"variations"}:
+            raise ValueError(f"Invalid Apple SDK entry: {path}")
+        variations = entry["variations"]
+        if not isinstance(variations, dict) or set(variations) != {"plural"}:
+            raise ValueError(f"Invalid Apple SDK variations: {path}")
+        forms = variations["plural"]
+        if (not isinstance(forms, dict) or "other" not in forms
+                or not set(forms).issubset({"zero", "one", "two", "few", "many", "other"})
+                or not all(isinstance(text, str) and text.strip() for text in forms.values())):
+            raise ValueError(f"Invalid Apple SDK plural: {path}")
     return value
 
 
 # 根据配置的目标语言检查两个 namespace；目录由调用方显式传入。
 def check(config: Path, outputs: dict[str, Path], app_bundle: Path | None = None) -> None:
-    languages = json.loads(config.read_text())["pull"]["languages"]
+    pull = json.loads(config.read_text())["pull"]
+    if (pull.get("format") != "apple-sdk"
+            or pull.get("fileStructureTemplate") != "Lingora/{namespace}/{languageTag}.{extension}"):
+        raise ValueError("Demo requires namespaced Apple SDK JSON layout")
+    languages = pull["languages"]
     if not isinstance(languages, list) or not languages:
         raise ValueError("Configure nonempty pull.languages")
     for language in languages:
@@ -48,12 +49,11 @@ def check(config: Path, outputs: dict[str, Path], app_bundle: Path | None = None
             bundle = app_bundle
             if bundle is not None and namespace == "common":
                 bundle = bundle / "Frameworks/LingoraCommon.framework"
-            for extension in ("strings", "stringsdict"):
-                relative = Path(f"{language}.lproj/{namespace}.{extension}")
-                expected = read_resource(output / relative)
-                if bundle is not None and read_resource(bundle / relative) != expected:
-                    raise ValueError(f"Packaged resource differs: {bundle / relative}")
-    print(f"Verified {len(languages) * len(outputs) * 2} required Apple resource files")
+            relative = Path(f"Lingora/{namespace}/{language}.json")
+            expected = read_resource(output / relative)
+            if bundle is not None and read_resource(bundle / relative) != expected:
+                raise ValueError(f"Packaged resource differs: {bundle / relative}")
+    print(f"Verified {len(languages) * len(outputs)} required Apple SDK JSON files")
 
 
 # 提供 CLI 同步和构建后共用的本地检查入口。

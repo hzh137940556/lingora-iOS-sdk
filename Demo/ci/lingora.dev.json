@@ -34,12 +34,12 @@
     "removeOtherKeys": false
   },
   "pull": {
-    "format": "apple-strings-stringdict",
+    "format": "apple-sdk",
     "path": "../LingoraDemo/Generated",
     "languages": ["ja", "zh-CN"],
     "namespaces": ["app", "common"],
     "states": ["TRANSLATED", "REVIEWED"],
-    "fileStructureTemplate": "{languageTag}.lproj/{namespace}.{extension}",
+    "fileStructureTemplate": "Lingora/{namespace}/{languageTag}.{extension}",
     "emptyDir": true,
     "tags": [],
     "excludeTags": [],

@@ -56,11 +56,12 @@ def package_fixture(root: Path, version: str) -> str:
 def resource_fixture(demo: Path) -> None:
     for target, namespace in (("LingoraDemo", "app"), ("LingoraCommon", "common")):
         for language in ("ja", "zh-CN"):
-            output = demo / target / "Generated" / f"{language}.lproj"
+            output = demo / target / "Generated/Lingora" / namespace
             output.mkdir(parents=True, exist_ok=True)
-            for extension in ("strings", "stringsdict"):
-                name = f"{namespace}.{extension}"
-                shutil.copyfile(demo / target / "Resources/en.lproj" / name, output / name)
+            (output / f"{language}.json").write_text(json.dumps({
+                "welcome": "Fixture welcome",
+                "items_count": {"variations": {"plural": {"other": "%lld items"}}},
+            }))
 
 
 # 统一执行模拟器构建；显式环境 URL 可覆盖 Xcode 项目的开发默认值。
@@ -71,7 +72,7 @@ def build(args: argparse.Namespace, workspace: Path) -> None:
         url = package_fixture(workspace / "producer", version)
         demo = workspace / "consumer/Demo"
         shutil.copytree(DEMO, demo, ignore=shutil.ignore_patterns(
-            "__pycache__", ".build", "DerivedData", "xcuserdata", "Package.resolved",
+            "__pycache__", ".build", "DerivedData", "xcuserdata", "Package.resolved", "Generated",
         ))
         configure(demo, {"mode": args.fixture_channel, "version": version,
                          "repositoryURL": url, "localPath": "../nonexistent-sdk"}, fixture=True)

@@ -7,12 +7,12 @@ Demo 保持现有 SwiftUI 页面，通过公开 `Lingora` product 展示 `app` �
 
 `sdk-source.json` 是 SDK 来源配置，`make configure-sdk` 将它写入**实际**的
 `LingoraDemo.xcodeproj/project.pbxproj`。切换后日常 Xcode 打开的同一工程直接使用所选来源，
-构建脚本与 IDE 使用同一依赖。当前默认 dev，固定已发布远端版本 [`0.1.0-dev.1`](https://github.com/hzh137940556/lingora-iOS-sdk/releases/tag/0.1.0-dev.1)。
+构建脚本与 IDE 使用同一依赖。当前默认 dev，固定已发布远端版本 [`0.1.0-dev.2`](https://github.com/hzh137940556/lingora-iOS-sdk/releases/tag/0.1.0-dev.2)。
 
 ```json
 {
   "mode": "dev",
-  "version": "0.1.0-dev.1",
+  "version": "0.1.0-dev.2",
   "repositoryURL": "https://github.com/hzh137940556/lingora-iOS-sdk.git",
   "localPath": "../SDK"
 }
@@ -85,7 +85,7 @@ make cli-init LINGORA_CONFIG=ci/lingora.local.json
 
 - `apiUrl`、`projectId`、`branch` 指向你的翻译项目；branch 是 Lingora 分支。
 - `push.files` 为每个 namespace 列出基础 `.strings` 和 `.stringsdict`，language 为 `en-US`。
-- `pull.format` 使用 `apple-strings-stringdict`，配置目标 `languages`、`namespaces` 和审核 `states`。
+- `pull.format` 使用 `apple-sdk`，路径模板为 `Lingora/{namespace}/{languageTag}.{extension}`，配置目标 `languages`、`namespaces` 和审核 `states`。
 - `fileStructureTemplate` 使用 `{languageTag}.lproj/{namespace}.{extension}`。
 - 保持 `forceMode=KEEP`、`removeOtherKeys=false`，生成目录不要指向源码目录。
 
@@ -113,19 +113,22 @@ API Key 由 CLI 读取环境变量；不进入 App。按项目约定提交无凭
 `make -j8 mock_ci` 仍严格串行，任一步失败即停止。不要把它作为普通 Xcode build phase。
 
 `validate` 可能对空输出目录成功；`check-resources` 另行要求每种目标语言的 app/common
-`.strings` 和 `.stringsdict` 都存在且非空。若项目没有 plural 或只有单个 namespace，应调整检查器。
+JSON 都存在且结构有效，并检查构建产物中的内容完全一致。若只有单个 namespace，应调整检查器。
 该门槛不代表所有 key 均已翻译。`KEEP` 不覆盖远端已有非空英语，push 不执行自动翻译或发布 CDN；
 成功上传不会在后续构建失败时回滚。
 
-当前开发服务的 Apple plural 导入会把 `%lld` 原样留在 ICU 分支内，导出时可能变为
-`%%lld`，此时 CLI 会报 `Placeholder mismatch` 并保留原输出。服务端 plural 应使用
-`{count, plural, other {# 个项目}}` 这样的 ICU 数量占位符；不要关闭校验或修改下载文件
-绕过错误。修正已有词条后，`KEEP` 会保留修正值，但新增 plural 仍需检查服务端内容。
-普通参数也应使用 ICU `{name}`（例如 `Hello, {name}!`）；否则 APPLE_SDK 可能把 `%@`
-导出为 `%%@`，导致运行时无法替换参数。现有项目已改为运行时可用的 ICU 内容；服务端导入问题仍待修复。
-当前 `.strings` 导出又会原样保留 `{name}`，与 APPLE_SDK 行为不一致，导致 CLI 占位符校验失败。
-因此自动翻译同步暂不启用；必须先修复服务端 `.strings` 参数转换并重跑 `make mock_ci`，
-不能靠删除参数词条、放宽校验或改写下载结果来让 CI 通过。
+下载使用既有 CLI 的 `apple-sdk` JSON，SDK `0.1.0-dev.2` 开启
+`bundledTranslationsDirectory: "Lingora"` 后直接读取 Bundle JSON，避开原生 `.strings`
+导出保留 ICU 参数的问题；CLI 和服务端均未修改。
+
+平台源文本仍须使用 ICU `{name}` 和 plural `#`，例如 `{count, plural, other {# 个项目}}`。
+导入时保留的原生 `%@` / `%lld` 可能被导出成 `%%@` / `%%lld`；此上传兼容问题不在本次 SDK
+扩展范围内。现有项目已使用正确 ICU，`KEEP` 保留现值；新增参数词条仍应核对平台内容。
+JSON 结构检查不等于完整的参数语义校验，运行时探针另行验证 Demo 的参数和复数词条。
+
+从旧 `.strings/.stringsdict` 生成布局迁移时，将两个 target 的旧 `Generated/` 移到工程外备份，
+再执行同步。预检拒绝新旧布局混用；不要自动删除或改写已有生成文件来绕过错误。
+本地真实流程和 CI 验收通过后可开启翻译同步开关，但工作流仍只在合并后的 develop 执行。
 CLI 项目配置不等于 Content Delivery 发布配置，push/pull 不会自动更新运行时 CDN。
 
 本项目的 `iOS Demo Dev` Content Delivery 固定绑定 `develop`，格式为 `apple-sdk`，
@@ -134,17 +137,21 @@ CLI 项目配置不等于 Content Delivery 发布配置，push/pull 不会自动
 当前采用手工发布，翻译修改后需在 Content Delivery 页面发布新快照。
 
 可显式执行以下只读验收（无需 API Key），使用固定发布 SDK 下载六个文档，并检查
-namespace、语言切换、字符串参数和复数；临时消费者不含 Bundle 翻译：
+namespace、语言切换、字符串参数和复数；先使用无 Bundle 翻译的在线消费者，再使用独立离线消费者：
 
 ```bash
 LINGORA_CONTENT_DELIVERY_URL=https://cosly-dev.s3.us-west-2.amazonaws.com/lingora/localstrings/ios-demo-ci/dev \
   python3 scripts/check_delivery.py
 ```
 
+构建后可使用 `python3 scripts/check_delivery.py --app-bundle /path/to/LingoraDemo.app`，
+通过远程固定 SDK 验证实际 App/framework 产物的离线 JSON。
+
 ## 生成资源与环境地址
 
 - App：`LingoraDemo/Resources/en.lproj` 为基础资源，`LingoraDemo/Generated` 为生成资源。
 - Framework：`LingoraCommon/Resources/en.lproj` 为基础资源，`LingoraCommon/Generated` 为生成资源。
+- 生成布局为 `Generated/Lingora/{namespace}/{languageTag}.json`；Xcode 将 Lingora 作为文件夹复制，保留层级。
 - Xcode 同步目录已覆盖生成资源；不要再次手工添加同一文件。不要在生成目录放入重复的英文基础资源。
 - 生成资源只保留在本机或 CI 工作区，不提交 Git。
 

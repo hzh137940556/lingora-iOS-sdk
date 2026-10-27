@@ -57,7 +57,7 @@ Demo、CLI 或仓库脚本。
 
 ## 5. 发布预发布与稳定版本
 
-`sdk-dev.version` 声明待发布的开发版本，首次为 `0.1.0-dev.1`。包含该文件变更的 PR 合入 develop 后，
+`sdk-dev.version` 声明待发布的开发版本，当前为 `0.1.0-dev.2`。包含该文件变更的 PR 合入 develop 后，
 push CI 自动提出发布请求、完成验证并等待 `ios-sdk-dev` 环境审批；批准后创建远端版本并验证消费。
 普通 PR 检查不发布，版本文件未变的后续 push 不重复发布；下一次自动发版需在 PR 中递增该文件。
 稳定版继续由 main 手动发起。不得移动既有 Tag，也不得同时为同一版本重复发起发布。
@@ -67,7 +67,7 @@ push CI 自动提出发布请求、完成验证并等待 `ios-sdk-dev` 环境审
 
 ```bash
 # develop
-make publish-dev VERSION=0.1.0-dev.1
+make publish-dev VERSION=0.1.0-dev.2
 
 # main
 make publish VERSION=0.1.0
@@ -88,7 +88,7 @@ snapshot 的父提交和目录树都对应已验证 source SHA，只重试原 pu
 
 ## 6. 消费验证
 
-发布 PR 合入 develop 后，经既有环境审批和发布验收成功，`0.1.0-dev.1` 即可通过远端精确版本消费。
+发布 PR 合入 develop 后，经既有环境审批和发布验收成功，`0.1.0-dev.2` 即可通过远端精确版本消费。
 无需等待 Demo 接入改动合入，也不需要再手动 dispatch 首次发布；不得手工创建 Tag。
 Demo 切换到该版本在 Demo 自己的 PR 中完成。合并完成不等于发布完成，审批或发布失败时版本仍不可用。
 
@@ -112,7 +112,7 @@ Demo 切换到该版本在 Demo 自己的 PR 中完成。合并完成不等于�
 ```swift
 .package(
     url: "https://github.com/hzh137940556/lingora-iOS-sdk.git",
-    exact: "0.1.0-dev.1"
+    exact: "0.1.0-dev.2"
 )
 ```
 
@@ -141,17 +141,18 @@ SDK 发布与独立 Package 验收在单独 PR 中维护，不依赖此 Demo 工
 稳定使用手动入口。手动选择非 develop 分支不会同步，上传前还会拒绝落后于最新 develop 的提交。
 
 启用后流程为配置并解析固定 SDK / 检查公开 URL → 固定 CLI → validate → push → app/common pull → validate → 必需文件检查 →
-远端固定版本 Package 构建 → 检查生成资源进入正确 Bundle → 上传模拟器 App ZIP（保留 7 天）。
+远端固定版本 Package 构建 → 检查生成资源进入正确 Bundle → 已发布 SDK 离线加载产物验证 → 上传模拟器 App ZIP（保留 7 天）。
 只检出 Demo，在上传前通过同一配置命令应用固定 dev 版本，不允许本地 SDK 源码兜底。API Key 仅用于同步步骤，不传给 Xcode。
 成功 push 不因后续失败回滚，KEEP 不覆盖已有非空值；CLI 同步不会自动发布 Content Delivery。
 
-当前仓库已配置上述 Secret/Variables；因开发服务 `.strings` 导出尚不转换 ICU 普通参数，
-`LINGORA_TRANSLATIONS_ENABLED=false`，修复导出并通过 `make mock_ci` 后再开启。SDK 固定为 `0.1.0-dev.1`，CDN 指向
+当前配置使用既有 CLI 的 `apple-sdk` JSON 下载，SDK `0.1.0-dev.2` 读取 Bundle JSON，
+避开原生 `.strings` 导出的 ICU 参数兼容问题。本地真实同步、打包及离线/在线运行时验证通过后
+可启用 `LINGORA_TRANSLATIONS_ENABLED=true`；PR 未合并期间不会执行 develop 自动同步。CDN 指向
 `https://cosly-dev.s3.us-west-2.amazonaws.com/lingora/localstrings/ios-demo-ci/dev`。
 密钥仅包含词条创建/编辑/查看和翻译编辑/查看权限，不具备 CDN 发布权限。
 
 普通 CI 另有 `Published SDK runtime and CDN` Job，在公开 URL 变量非空时只读验收公开 CDN，
-不传 Secret、不执行 push/pull。PR 合并前可验证实际发布 SDK 的运行时加载；真实翻译同步仍
+不传 Secret、不执行 push/pull，并在独立消费者中校验 JSON 离线加载。PR 合并前可验证实际发布 SDK 的运行时加载；真实翻译同步仍
 仅限 develop，且必须等工作流合入后才能在 GitHub 执行。不要为预合并验收放宽分支门禁。
 首次验收需分别确认 Actions 步骤、产物内资源、模拟器运行与 CDN 内容；真机 IPA 沿用独立签名流程。
 业务仓库可复制 [消费项目 CI 模板](Demo/ci/examples/README.md)，无需使用本仓库的发布权限。

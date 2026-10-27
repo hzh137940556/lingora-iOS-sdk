@@ -16,7 +16,7 @@ scripts/                     仓库边界和发布脚本，不进入 Package
 Demo 通过 `Demo/sdk-source.json` 选择 local/dev/release，并由配置命令更新实际 Xcode 工程。
 local 引用 `../SDK`，dev/release 引用远端精确版本；两者都只链接公开 `Lingora` product，不回退源码。
 切换示例：`make demo-configure SDK_MODE=dev SDK_VERSION=X.Y.Z-dev.N`，随后重新打开 Demo 工程。
-当前默认 dev，固定远端版本 `0.1.0-dev.1`；日常 Xcode 与命令行构建使用同一配置，解析失败不会回退本地源码。
+当前默认 dev，固定远端版本 `0.1.0-dev.2`；日常 Xcode 与命令行构建使用同一配置，解析失败不会回退本地源码。
 
 SDK 的安装与公开 API 说明见 [SDK/README.md](SDK/README.md)。
 本地/远端 Package 消费、CLI 命令和资源打包见 [Demo 接入指南](Demo/README.md)。
@@ -32,7 +32,9 @@ Demo 使用开发项目 Lingora iOS Demo CI（`1cc50f64-d46f-4360-ab40-561b4317d
 SDK 的公开 API。
 
 Apple CLI 配置位于 `Demo/ci/lingora.dev.json`。push 使用 `KEEP`，保留服务端已有非空值，且不删除
-其他 key。pull 分别输出到两个 target 自己的 `Generated/` 目录。普通 Xcode build 不安装或运行 CLI。
+其他 key。pull 使用 `apple-sdk`，分别输出到两个 target 自己的
+`Generated/Lingora/{namespace}/{languageTag}.json`。Xcode 保留 Lingora 文件夹层级，SDK 启用
+Bundle JSON 回退；原生英文资源继续作为最后回退。CLI 无需升级，平台源文本仍须为正确 ICU。普通 Xcode build 不安装或运行 CLI。
 只有获得远端写入授权并设置 `LINGORA_API_KEY` 后，才可执行：
 
 ```bash
@@ -40,6 +42,9 @@ make cli-push
 make cli-pull
 make mock_ci
 ```
+
+从旧原生导出布局迁移时，先将两个 target 的旧 `Generated/` 目录移到工程外备份，
+再执行同步；预检会拒绝混用旧文件，不自动删除已有资源。
 
 `Demo/lingora-cli.version` 固定为已安装验收的 CLI 版本。本地 `cli-validate` 不访问真实项目。
 
@@ -70,11 +75,11 @@ make verify
 普通 PR 和未修改版本文件的分支提交只运行验证。也可在分支同步且工作区干净时手动请求版本：
 
 ```bash
-make publish-dev VERSION=0.1.0-dev.1  # develop
+make publish-dev VERSION=0.1.0-dev.2  # develop
 make publish VERSION=0.1.0            # main
 ```
 
-`sdk-dev.version` 的变更合入 develop 后自动申请 dev 发布（首次 `0.1.0-dev.1`），等待环境审批；
+`sdk-dev.version` 的变更合入 develop 后自动申请 dev 发布，等待环境审批；
 版本文件未变时不重复发版。上述命令仍可手动请求发布，稳定版继续从 main 发起。
 
 审批后的 CI 会从已验证 source commit 的 `SDK/` 子树创建 package-only snapshot commit，再创建不可移动

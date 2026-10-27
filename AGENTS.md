@@ -25,9 +25,10 @@
 - Demo 在创建 `Lingora` 实例时传入公开 Content Delivery URL；SDK Package 不持有环境 URL。
 - `LINGORA_API_KEY` 只用于显式执行的 CLI 进程，不写入 Xcode 配置、源码、日志或示例。
 - Demo 只安装 `lingora-cli.version` 固定版本并调用公开命令；普通 Xcode build 不运行 CLI。
+- CLI pull 使用 apple-sdk JSON，保留 `Generated/Lingora/{namespace}/{languageTag}.json` 的目录层级；SDK 显式开启 Bundle JSON 回退，两个 Bundle 单独验证。
 - 基础资源位于 `Resources/en.lproj`，生成资源只写 `Generated/` 并忽略提交。
 - `Demo/sdk-source.json` 统一配置 local/dev/release；`configure_sdk.py` 将选择持久化到实际 Xcode 工程，配置与工程必须一致。普通构建和 Xcode 检查但不自动改写。
-- Demo 默认固定 dev 版本 `0.1.0-dev.1`；远端配置与 Xcode 的 Package.resolved 一并提交，不提交不存在版本的伪造解析结果。
+- Demo 默认固定 dev 版本 `0.1.0-dev.2`；远端配置与 Xcode 的 Package.resolved 一并提交，不提交不存在版本的伪造解析结果。
 - local 只读取相对 `localPath`，version 为空；dev 必须为 `X.Y.Z-dev.N`，release 必须为 `X.Y.Z`，都使用 exactVersion，远端不访问或回退本地 SDK。
 - 普通远端脚本构建必须使用匹配配置的 Package.resolved；切换版本后显式执行 `build_demo.py --resolve-only`。翻译 CI 在任何上传前完成 URL 校验和依赖解析。
 - fixture 是测试专用入口，使用同一配置逻辑在无 SDK 的隔离消费者验证两个渠道，file URL 仅测试可用，不修改当前工程选择。

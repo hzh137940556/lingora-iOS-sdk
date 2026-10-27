@@ -17,7 +17,8 @@ struct LingoraDemoApp: App {
             locale: Locale(identifier: "en-US"),
             language: "en-US",
             namespaces: ["app", "common"],
-            enableDebugLogs: true
+            enableDebugLogs: true,
+            bundledTranslationsDirectory: "Lingora"
         )
     }
 

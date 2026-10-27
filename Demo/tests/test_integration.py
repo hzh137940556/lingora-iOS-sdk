@@ -11,7 +11,7 @@ import unittest
 DEMO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEMO / "scripts"))
 from configure_sdk import configure
-from check_resources import check
+from check_resources import check, read_resource
 
 
 class IntegrationTests(unittest.TestCase):
@@ -74,29 +74,43 @@ if os.environ.get("FAIL") in args:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             config = root / "config.json"
-            config.write_text(json.dumps({"pull": {"languages": ["ja"]}}))
+            config.write_text(json.dumps({"pull": {"languages": ["ja"], "format": "apple-sdk",
+                "fileStructureTemplate": "Lingora/{namespace}/{languageTag}.{extension}"}}))
             outputs = {"app": root / "app", "common": root / "common"}
             app = root / "App.app"
             for namespace, output in outputs.items():
                 bundle = app if namespace == "app" else app / "Frameworks/LingoraCommon.framework"
                 for target in (output, bundle):
-                    path = target / "ja.lproj"
+                    path = target / "Lingora" / namespace
                     path.mkdir(parents=True)
-                    (path / f"{namespace}.strings").write_text('"welcome" = "Hello";')
-                    shutil.copy(DEMO / ("LingoraDemo" if namespace == "app" else "LingoraCommon")
-                                / f"Resources/en.lproj/{namespace}.stringsdict", path)
+                    (path / "ja.json").write_text(json.dumps({"welcome": "Hello", "items_count": {
+                        "variations": {"plural": {"other": "%lld items"}}}}))
             check(config, outputs, app)
-            packaged = app / "Frameworks/LingoraCommon.framework/ja.lproj/common.strings"
-            packaged.write_text('"welcome" = "Wrong";')
+            packaged = app / "Frameworks/LingoraCommon.framework/Lingora/common/ja.json"
+            packaged.write_text('{"welcome": "Wrong"}')
             with self.assertRaises(ValueError):
                 check(config, outputs, app)
-            generated = outputs["app"] / "ja.lproj/app.strings"
+            generated = outputs["app"] / "Lingora/app/ja.json"
             generated.write_text('{}')
             with self.assertRaises(ValueError):
                 check(config, outputs)
             generated.unlink()
-            with self.assertRaises(subprocess.CalledProcessError):
+            with self.assertRaises(FileNotFoundError):
                 check(config, outputs)
+
+    # JSON 结构门禁拒绝缺失 other、未知变体和空值，避免构建携带坏资源。
+    def test_invalid_sdk_documents(self):
+        invalid = [[], {}, {"": "value"}, {"hello": ""}, {"hello": 1},
+                   {"items": {"variations": {"plural": {"one": "%lld item"}}}},
+                   {"items": {"variations": {"plural": {"other": "", "one": "one"}}}},
+                   {"items": {"variations": {"plural": {"other": "items", "bogus": "bad"}}}}]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ja.json"
+            for value in invalid:
+                with self.subTest(value=value):
+                    path.write_text(json.dumps(value))
+                    with self.assertRaises(ValueError):
+                        read_resource(path)
 
 
 if __name__ == "__main__":

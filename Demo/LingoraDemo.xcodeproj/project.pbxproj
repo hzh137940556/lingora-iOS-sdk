@@ -52,8 +52,8 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		A00000000000000000000001 /* LingoraDemo/Generated */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = LingoraDemo/Generated; sourceTree = "<group>"; };
-		A00000000000000000000002 /* LingoraCommon */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = LingoraCommon; sourceTree = "<group>"; };
+		A00000000000000000000001 /* LingoraDemo/Generated */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (Lingora, ); path = LingoraDemo/Generated; sourceTree = "<group>"; };
+		A00000000000000000000002 /* LingoraCommon */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (Generated/Lingora, ); path = LingoraCommon; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -462,7 +462,7 @@
 			repositoryURL = "https://github.com/hzh137940556/lingora-iOS-sdk.git";
 			requirement = {
 				kind = exactVersion;
-				version = "0.1.0-dev.1";
+				version = "0.1.0-dev.2";
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

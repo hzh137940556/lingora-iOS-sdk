@@ -62,6 +62,7 @@ jobs:
         run: |
           python3 Demo/scripts/build_demo.py \
             --check-resources --artifact "$RUNNER_TEMP/LingoraDemo.app"
+          python3 Demo/scripts/check_delivery.py --app-bundle "$RUNNER_TEMP/LingoraDemo.app"
           ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/LingoraDemo.app" "$RUNNER_TEMP/LingoraDemo-simulator.zip"
       - uses: actions/upload-artifact@v4
         with:

@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/hzh137940556/lingora-iOS-sdk.git",
       "state" : {
-        "revision" : "a10fd885e0596f5cf7de291bc439f4aba951a0f6",
-        "version" : "0.1.0-dev.1"
+        "revision" : "04e9d779b7bafca0c7e48854c0cc946589e927e4",
+        "version" : "0.1.0-dev.2"
       }
     }
   ],
