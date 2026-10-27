@@ -15,12 +15,12 @@ public final class Lingora {
 
     public private(set) var availableLanguages: [String] = []
     public private(set) var resolvedLanguage: String?
-    private var catalogRevision: UInt64 = 0
-    private var languageOptions: LingoraLanguageOptions?
+    private var publishedLanguages: [String]?
+    private var defaultLanguage: String?
     private var explicitLanguage = false
     private var defaultNamespace: String?
-    private var autoLoad: LingoraAutoLoad = .manual
-    private var automaticTask: Task<Void, Never>?
+    private var fetchedTables: Set<String> = []
+    private var preloadTask: Task<Void, Never>?
     private var configuration: LingoraConfiguration?
     private var currentLocale = Locale.current
     private var currentLanguage: String?
@@ -63,8 +63,8 @@ public final class Lingora {
         enableSwizzling: Bool = false,
         bundledTranslationsDirectory: String? = nil,
         defaultNamespace: String? = nil,
-        languageOptions: LingoraLanguageOptions? = nil,
-        autoLoad: LingoraAutoLoad = .manual
+        availableLanguages: [String]? = nil,
+        defaultLanguage: String? = nil
     ) {
         guard configuration == nil else {
             emit(.debug, "Repeated initialize call was ignored")
@@ -82,13 +82,10 @@ public final class Lingora {
             emit(.error, "Invalid default namespace")
             return
         }
-        if let options = languageOptions {
-            guard LanguageResolver.validList(options.availableLanguages),
-                  options.defaultLanguage.map(LanguageResolver.validTag) ?? true,
-                  options.manifestFileName.map({ Self.isSafePathComponent($0) && $0.hasSuffix(".json") }) ?? true else {
-                emit(.error, "Invalid language options")
-                return
-            }
+        guard availableLanguages.map(LanguageResolver.validList) ?? true,
+              defaultLanguage.map(LanguageResolver.validTag) ?? true else {
+            emit(.error, "Invalid language configuration")
+            return
         }
         let resolvedLanguage = language ?? Self.languageTag(for: locale)
         guard Self.isSafePathComponent(resolvedLanguage),
@@ -105,16 +102,18 @@ public final class Lingora {
             enableDebugLogs: enableDebugLogs
         )
         self.defaultNamespace = defaultNamespace
-        self.languageOptions = languageOptions
-        self.availableLanguages = languageOptions?.availableLanguages ?? []
-        self.autoLoad = autoLoad
+        self.publishedLanguages = availableLanguages
+        self.availableLanguages = availableLanguages ?? []
+        self.defaultLanguage = defaultLanguage
         self.bundledTranslationsDirectory = bundledTranslationsDirectory
         explicitLanguage = language != nil
-        automaticTask?.cancel()
+        preloadTask?.cancel()
+        preloadTask = nil
         currentLocale = locale
         currentLanguage = resolvedLanguage
         self.resolvedLanguage = nil
         documents = [:]
+        fetchedTables = []
         generation &+= 1
         isInitialized = true
         lastFetchDate = nil
@@ -125,11 +124,32 @@ public final class Lingora {
         }
         emit(.debug, "Lingora initialized for language \(resolvedLanguage)")
         restoreCachedDocuments(language: resolvedLanguage, generation: generation)
-        if autoLoad != .manual { scheduleAutomaticFetch() }
     }
 
     /// 获取当前语言或预取指定语言；预取不会切换当前展示语言。
-    public func remoteFetch(language: String? = nil, forceRefresh: Bool = true) async {
+    public func remoteFetch(language: String? = nil) async {
+        await fetch(language: language, forceRefresh: true, onlyMissing: false)
+    }
+
+    /// 对齐 Android preload：多个消费者共享一次加载，已加载文档不重复请求，失败冷却后可重试。
+    public func preload() async {
+        guard !Task.isCancelled, let configuration else { return }
+        if let task = preloadTask { await task.value; return }
+        let tables = Self.tables(for: configuration)
+        guard !tables.allSatisfy({ fetchedTables.contains($0) }) else { return }
+        let expectedGeneration = generation
+        let task = Task { [weak self] in
+            guard let self, self.generation == expectedGeneration, !Task.isCancelled else { return }
+            await self.fetch(language: nil, forceRefresh: false, onlyMissing: true)
+        }
+        preloadTask = task
+        await task.value
+        guard generation == expectedGeneration else { return }
+        preloadTask = nil
+    }
+
+    /// 合并显式刷新与预加载实现，预加载只补当前缺失的 namespace。
+    private func fetch(language: String?, forceRefresh: Bool, onlyMissing: Bool) async {
         guard let configuration, let activeLanguage = currentLanguage else {
             emit(.error, "Lingora must be initialized before remoteFetch")
             return
@@ -140,21 +160,16 @@ public final class Lingora {
             emit(.error, "Fetch language must be a safe path component")
             return
         }
+        let tables = Self.tables(for: configuration).filter { !onlyMissing || !fetchedTables.contains($0) }
+        if onlyMissing && tables.isEmpty { return }
         let requestedGeneration = generation
         fetchSequences[requestedLanguage, default: 0] &+= 1
         let sequence = fetchSequences[requestedLanguage]!
         if !isPrefetch { loadState = .loading }
-        if language == nil, !explicitLanguage, languageOptions?.availableLanguages.isEmpty == true,
-           let file = languageOptions?.manifestFileName {
-            let languages = await store.languages(baseURL: configuration.contentDeliveryURL, fileName: file, network: true)
-            guard requestedGeneration == generation, fetchSequences[requestedLanguage] == sequence else { return }
-            if let languages {
-                catalogRevision &+= 1
-                availableLanguages = languages
-            }
+        guard let documentLanguage = language != nil || explicitLanguage ? requestedLanguage : matchedLanguage(requestedLanguage) else {
+            if !isPrefetch { loadState = .fallback(failedTables: Self.tables(for: configuration)) }
+            return
         }
-        let documentLanguage = language != nil || explicitLanguage ? requestedLanguage : matchedLanguage(requestedLanguage)
-        let tables = Self.tables(for: configuration)
         let store = self.store
         let baseURL = configuration.contentDeliveryURL
         var loaded: [String: (TranslationDocument, LingoraFetchSource)] = [:]
@@ -200,6 +215,7 @@ public final class Lingora {
         }
         if resolvedLanguage != documentLanguage { documents = [:] }
         resolvedLanguage = documentLanguage
+        fetchedTables.formUnion(loaded.keys)
         documents.merge(loaded.mapValues(\.0)) { _, new in new }
         lastFetchDate = Date()
         lastFetchSource = loaded.values.contains { $0.1 == .network }
@@ -276,18 +292,19 @@ public final class Lingora {
             throw LingoraError.unsupportedLocale(locale.identifier)
         }
         explicitLanguage = language != nil
-        automaticTask?.cancel()
+        preloadTask?.cancel()
+        preloadTask = nil
         currentLocale = locale
         currentLanguage = resolvedLanguage
         self.resolvedLanguage = nil
         documents = [:]
+        fetchedTables = []
         generation &+= 1
         lastFetchDate = nil
         lastFetchSource = nil
         loadState = .idle
         notifyTranslationsUpdated()
         restoreCachedDocuments(language: resolvedLanguage, generation: generation)
-        if autoLoad == .onInitializeAndLocaleChange { scheduleAutomaticFetch() }
     }
 
     /// 订阅远端文档或语言切换后的刷新事件。
@@ -326,10 +343,11 @@ public final class Lingora {
 
     /// 清空远端内存和当前 App 版本的磁盘缓存，保留不可变 Bundle 资源。
     public func clearCache() throws {
-        availableLanguages = languageOptions?.availableLanguages ?? []
-        automaticTask?.cancel()
+        preloadTask?.cancel()
+        preloadTask = nil
         resolvedLanguage = nil
         documents = [:]
+        fetchedTables = []
         generation &+= 1
         lastFetchDate = nil
         lastFetchSource = nil
@@ -369,14 +387,7 @@ public final class Lingora {
         let store = self.store
         Task { [weak self] in
             guard let self else { return }
-            let revision = self.catalogRevision
-            if !self.explicitLanguage, self.languageOptions?.availableLanguages.isEmpty == true,
-               let file = self.languageOptions?.manifestFileName,
-               let languages = await store.languages(baseURL: baseURL, fileName: file, network: false),
-               requestedGeneration == self.generation, self.catalogRevision == revision {
-                self.availableLanguages = languages
-            }
-            let documentLanguage = self.explicitLanguage ? language : self.matchedLanguage(language)
+            guard let documentLanguage = self.explicitLanguage ? language : self.matchedLanguage(language) else { return }
             var cached: [String: TranslationDocument] = [:]
             await withTaskGroup(of: (String, LoadedDocument?).self) { group in
                 for table in tables {
@@ -417,20 +428,9 @@ public final class Lingora {
         }
     }
 
-    /// 显式 language 不使用推断；无可用目录时继续请求原始标签。
-    private func matchedLanguage(_ requested: String) -> String {
-        guard let options = languageOptions else { return requested }
-        return LanguageResolver.resolve(requested, available: availableLanguages, defaultLanguage: options.defaultLanguage)
-    }
-
-    /// 后台刷新不阻塞翻译读取；切换和清缓存取消上一自动任务。
-    private func scheduleAutomaticFetch() {
-        automaticTask?.cancel()
-        let expectedGeneration = generation
-        automaticTask = Task { [weak self] in
-            guard let self, !Task.isCancelled, self.generation == expectedGeneration else { return }
-            await self.remoteFetch(forceRefresh: false)
-        }
+    /// 沿用 Android 的候选标签顺序；没有目录时精确请求。
+    private func matchedLanguage(_ requested: String) -> String? {
+        LanguageResolver.resolve(requested, available: publishedLanguages, defaultLanguage: defaultLanguage)
     }
 
     /// 根据日志级别和 debug 开关发送结构化日志。

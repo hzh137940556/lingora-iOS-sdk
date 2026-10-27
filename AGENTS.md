@@ -17,7 +17,7 @@
 - 公共 API 保持 Tolgee 风格的 singleton、`initialize`、`remoteFetch`、`translate`、locale 切换和更新流。
 - 网络或无效远端数据不得清空最后有效翻译；缓存写入使用原子替换。
 - 可选 Bundle APPLE_SDK JSON 只能读取调用方 Bundle，按语言/namespace 隔离并复用文档校验；默认关闭，不影响 CLI、服务端或系统资源回退。
-- 默认 namespace 只影响 SDK 文档，不改变原生 Bundle table；语言匹配、目录和自动加载均显式开启，默认保留精确语言与手动 fetch。
+- 默认 namespace 只影响 SDK 文档，不改变原生 Bundle table；语言匹配遵循 Android 候选标签顺序；Apple 不输出 manifest，由调用方提供语言列表。不新增加载策略枚举，使用 preload、remoteFetch 和 SwiftUI 按需加载。
 - swizzling 默认关闭，只接管普通字符串；plural fallback 继续交给系统资源。
 
 ## Demo 与 CLI 边界

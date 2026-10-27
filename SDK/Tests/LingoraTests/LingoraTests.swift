@@ -454,12 +454,12 @@ final class LingoraTests: XCTestCase {
         let initial = await states.next()
         XCTAssertEqual(initial, .idle)
         MockURLProtocol.responses = [.init(status: 404, headers: [:], data: Data())]
-        await sdk.remoteFetch(forceRefresh: false)
+        await sdk.preload()
         let loading = await states.next()
         let failed = await states.next()
         XCTAssertEqual(loading, .loading)
         XCTAssertEqual(failed, .fallback(failedTables: [""]))
-        await sdk.remoteFetch(forceRefresh: false)
+        await sdk.preload()
         XCTAssertEqual(MockURLProtocol.requests.count, 1)
         MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"hello":"recovered"}"#.utf8))]
         await sdk.remoteFetch()
@@ -818,7 +818,7 @@ final class LingoraTests: XCTestCase {
         ]
         let lingora = Lingora(session: makeSession(), cacheDirectory: temporary)
         lingora.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, locale: Locale(identifier: "ja-JP"),
-                           languageOptions: .init(availableLanguages: ["en"], defaultLanguage: "en"))
+                           availableLanguages: ["en"], defaultLanguage: "en")
         await lingora.remoteFetch()
         XCTAssertEqual(lingora.resolvedLanguage, "en")
         XCTAssertEqual(lingora.translate("items", 1), "one")
@@ -826,75 +826,6 @@ final class LingoraTests: XCTestCase {
         await lingora.remoteFetch()
         XCTAssertEqual(lingora.resolvedLanguage, "ja-JP")
         XCTAssertEqual(lingora.translate("welcome"), "explicit")
-    }
-
-    /// 目录缓存支持 304、无效响应和离线恢复，失败不阻止直接语言请求。
-    func testManifestCacheAndFailureFallback() async throws {
-        MockURLProtocol.responsesByPath = [
-            "/manifest.json": [
-                .init(status: 200, headers: ["ETag": "catalog-v1"], data: Data(#"{"locales":["en"]}"#.utf8)),
-                .init(status: 304, headers: [:], data: Data()),
-                .init(status: 200, headers: [:], data: Data(#"{"locales":["../bad"]}"#.utf8))],
-            "/en.json": (0..<3).map { _ in .init(status: 200, headers: [:], data: Data(#"{"welcome":"cached language"}"#.utf8)) }
-        ]
-        let lingora = Lingora(session: makeSession(), cacheDirectory: temporary)
-        lingora.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, locale: Locale(identifier: "en-AU"),
-                           languageOptions: .init(manifestFileName: "manifest.json"))
-        for _ in 0..<3 { await lingora.remoteFetch() }
-        XCTAssertEqual(lingora.availableLanguages, ["en"])
-        XCTAssertEqual(lingora.translate("welcome"), "cached language")
-        let requests = MockURLProtocol.requests.filter { $0.url?.lastPathComponent == "manifest.json" }
-        XCTAssertEqual(requests[1].value(forHTTPHeaderField: "If-None-Match"), "catalog-v1")
-        let count = MockURLProtocol.requestCount
-        let offline = Lingora(session: makeSession(), cacheDirectory: temporary)
-        offline.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, locale: Locale(identifier: "en-AU"),
-                           languageOptions: .init(manifestFileName: "manifest.json"))
-        let restored = await waitUntil { offline.translate("welcome") == "cached language" }
-        XCTAssertTrue(restored)
-        XCTAssertEqual(MockURLProtocol.requestCount, count)
-        try offline.clearCache()
-        MockURLProtocol.responsesByPath = [
-            "/manifest.json": [.init(status: 404, headers: [:], data: Data())],
-            "/fr.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"direct"}"#.utf8))]
-        ]
-        let direct = Lingora(session: makeSession(), cacheDirectory: temporary)
-        direct.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, locale: Locale(identifier: "fr"),
-                          languageOptions: .init(manifestFileName: "manifest.json"))
-        await direct.remoteFetch()
-        XCTAssertEqual(direct.translate("welcome"), "direct")
-    }
-
-    /// 自动加载可关闭；初始化模式不在切换时发请求，全自动模式丢弃旧语言结果。
-    func testAutomaticLoadingPoliciesAndRapidSwitch() async throws {
-        let base = URL(string: "https://cdn.example.com")!
-        let manual = Lingora(session: makeSession(), cacheDirectory: temporary.appendingPathComponent("manual"))
-        manual.initialize(contentDeliveryURL: base, language: "en")
-        try manual.setCustomLocale(Locale(identifier: "ja"))
-        try await Task.sleep(for: .milliseconds(30))
-        XCTAssertEqual(MockURLProtocol.requestCount, 0)
-        MockURLProtocol.responsesByPath = [
-            "/en.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"init"}"#.utf8))]
-        ]
-        let initial = Lingora(session: makeSession(), cacheDirectory: temporary.appendingPathComponent("initial"))
-        initial.initialize(contentDeliveryURL: base, language: "en", autoLoad: .onInitialize)
-        let initialized = await waitUntil { initial.translate("welcome") == "init" }
-        XCTAssertTrue(initialized)
-        try initial.setCustomLocale(Locale(identifier: "fr"))
-        try await Task.sleep(for: .milliseconds(30))
-        XCTAssertEqual(MockURLProtocol.requestCount, 1)
-        MockURLProtocol.responsesByPath = [
-            "/en.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"stale"}"#.utf8), delay: 0.2)],
-            "/ja.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"new"}"#.utf8))]
-        ]
-        let automatic = Lingora(session: makeSession(), cacheDirectory: temporary.appendingPathComponent("automatic"))
-        automatic.initialize(contentDeliveryURL: base, language: "en", autoLoad: .onInitializeAndLocaleChange)
-        let started = await waitUntil { MockURLProtocol.requestCount == 2 }
-        XCTAssertTrue(started)
-        try automatic.setCustomLocale(Locale(identifier: "ja"))
-        let switched = await waitUntil { automatic.translate("welcome") == "new" }
-        XCTAssertTrue(switched)
-        try await Task.sleep(for: .milliseconds(220))
-        XCTAssertEqual(automatic.translate("welcome"), "new")
     }
 
     /// SDK 默认 namespace 同样适用于离线 JSON，显式根 table 不被替换。
@@ -911,57 +842,95 @@ final class LingoraTests: XCTestCase {
         XCTAssertEqual(MockURLProtocol.requestCount, 0)
     }
 
-    /// 静态目录优先且无效配置不触发后台请求；清缓存取消尚未启动的自动加载。
-    func testOptionsValidationStaticPriorityAndCancellation() async throws {
-        let base = URL(string: "https://cdn.example.com")!
-        for options in [LingoraLanguageOptions(availableLanguages: ["en", "EN"]),
-                        .init(defaultLanguage: "../en"), .init(manifestFileName: "../manifest.json")] {
-            let invalid = Lingora(session: makeSession(), cacheDirectory: temporary)
-            invalid.initialize(contentDeliveryURL: base, languageOptions: options, autoLoad: .onInitialize)
-            XCTAssertFalse(invalid.isInitialized)
-        }
-        let invalid = Lingora(session: makeSession(), cacheDirectory: temporary)
-        invalid.initialize(contentDeliveryURL: base, defaultNamespace: "../app")
-        XCTAssertFalse(invalid.isInitialized)
-        let cancelled = Lingora(session: makeSession(), cacheDirectory: temporary)
-        cancelled.initialize(contentDeliveryURL: base, autoLoad: .onInitialize)
-        try cancelled.clearCache()
-        try await Task.sleep(for: .milliseconds(30))
-        XCTAssertEqual(MockURLProtocol.requestCount, 0)
-        MockURLProtocol.responsesByPath = [
-            "/en.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"static"}"#.utf8))]
+    /// 与 Android 相同：初始化不请求网络，preload 合并消费者请求，refresh 始终检查远端。
+    func testPreloadCoalescesAndRefreshesExplicitly() async throws {
+        MockURLProtocol.responses = [
+            .init(status: 200, headers: [:], data: Data(#"{"welcome":"first"}"#.utf8), delay: 0.05),
+            .init(status: 200, headers: [:], data: Data(#"{"welcome":"refreshed"}"#.utf8))
         ]
         let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
-        sdk.initialize(contentDeliveryURL: base, locale: Locale(identifier: "en-AU"),
-                       languageOptions: .init(availableLanguages: ["en"], manifestFileName: "manifest.json"))
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(MockURLProtocol.requestCount, 0)
+        let first = Task { await sdk.preload() }
+        let second = Task { await sdk.preload() }
+        await first.value
+        await second.value
+        await sdk.preload()
+        XCTAssertEqual(MockURLProtocol.requestCount, 1)
+        XCTAssertEqual(sdk.translate("welcome"), "first")
         await sdk.remoteFetch()
-        XCTAssertEqual(MockURLProtocol.requests.compactMap { $0.url?.path }, ["/en.json"])
-        XCTAssertEqual(sdk.translate("welcome"), "static")
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+        XCTAssertEqual(sdk.translate("welcome"), "refreshed")
     }
 
-    /// 自动刷新等待目录时仍先恢复旧目录及语言包，不阻塞缓存展示。
-    func testAutomaticManifestRefreshShowsCacheFirst() async throws {
+    /// SwiftUI 的订阅与 Android tFlow 一样按需加载，切换后旧请求不能覆盖当前语言。
+    func testSwiftUIConsumerLoadsAndSwitches() async throws {
         MockURLProtocol.responsesByPath = [
-            "/manifest.json": [.init(status: 200, headers: [:], data: Data(#"{"locales":["en"]}"#.utf8))],
-            "/en.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"cached"}"#.utf8))]
+            "/en.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"old"}"#.utf8), delay: 0.2)],
+            "/ja.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"new"}"#.utf8))]
         ]
-        let base = URL(string: "https://cdn.example.com")!
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        let updater = LingoraSwiftUIUpdater(lingora: sdk)
+        let started = await waitUntil { MockURLProtocol.requestCount == 1 }
+        XCTAssertTrue(started)
+        try sdk.setCustomLocale(Locale(identifier: "ja"))
+        let loaded = await waitUntil { sdk.translate("welcome") == "new" }
+        XCTAssertTrue(loaded)
+        try await Task.sleep(for: .milliseconds(220))
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+        XCTAssertEqual(sdk.resolvedLanguage, "ja")
+        withExtendedLifetime(updater) {}
+    }
+
+    /// 已恢复缓存立即可读，但首次 preload 仍检查网络以免永远停留在旧翻译。
+    func testPreloadRefreshesRestoredCache() async throws {
+        MockURLProtocol.responses = [
+            .init(status: 200, headers: [:], data: Data(#"{"welcome":"cached"}"#.utf8)),
+            .init(status: 200, headers: [:], data: Data(#"{"welcome":"fresh"}"#.utf8))
+        ]
         let initial = Lingora(session: makeSession(), cacheDirectory: temporary)
-        initial.initialize(contentDeliveryURL: base, locale: Locale(identifier: "en-AU"),
-                           languageOptions: .init(manifestFileName: "manifest.json"))
+        initial.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
         await initial.remoteFetch()
+        let restored = Lingora(session: makeSession(), cacheDirectory: temporary)
+        restored.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        let cached = await waitUntil { restored.translate("welcome") == "cached" }
+        XCTAssertTrue(cached)
+        await restored.preload()
+        XCTAssertEqual(restored.translate("welcome"), "fresh")
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+    }
+
+    /// 无匹配且无默认语言时只回退 Bundle，不猜测其他地区或发出无效请求。
+    func testLanguageConfigurationAndNoMatch() async throws {
+        let base = URL(string: "https://cdn.example.com")!
+        for languages in [["en", "EN"], ["../en"]] {
+            let invalid = Lingora(session: makeSession(), cacheDirectory: temporary)
+            invalid.initialize(contentDeliveryURL: base, availableLanguages: languages)
+            XCTAssertFalse(invalid.isInitialized)
+        }
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: base, locale: Locale(identifier: "en-AU"), availableLanguages: ["en-US"])
+        await sdk.preload()
+        XCTAssertEqual(MockURLProtocol.requestCount, 0)
+        XCTAssertEqual(sdk.loadState, .fallback(failedTables: [""]))
+    }
+
+    /// 部分 namespace 失败时预加载不重下成功文档，失败 namespace 遵守同一冷却门禁。
+    func testPreloadRetainsSuccessfulNamespacesDuringCooldown() async {
         MockURLProtocol.responsesByPath = [
-            "/manifest.json": [.init(status: 200, headers: [:], data: Data(#"{"locales":["en"]}"#.utf8), delay: 0.3)],
-            "/en.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"fresh"}"#.utf8))]
+            "/app/en.json": [.init(status: 200, headers: [:], data: Data(#"{"welcome":"app"}"#.utf8))],
+            "/common/en.json": [.init(status: 404, headers: [:], data: Data())]
         ]
-        let automatic = Lingora(session: makeSession(), cacheDirectory: temporary)
-        automatic.initialize(contentDeliveryURL: base, locale: Locale(identifier: "en-AU"),
-                             languageOptions: .init(manifestFileName: "manifest.json"), autoLoad: .onInitialize)
-        let restored = await waitUntil { automatic.translate("welcome") == "cached" }
-        XCTAssertTrue(restored)
-        XCTAssertEqual(automatic.lastFetchSource, .cache)
-        let updated = await waitUntil { automatic.translate("welcome") == "fresh" }
-        XCTAssertTrue(updated)
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en",
+                       namespaces: ["common"], defaultNamespace: "app")
+        await sdk.preload()
+        await sdk.preload()
+        await sdk.preload()
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+        XCTAssertEqual(sdk.translate("welcome"), "app")
     }
 
     /// 创建只使用 MockURLProtocol 的会话。

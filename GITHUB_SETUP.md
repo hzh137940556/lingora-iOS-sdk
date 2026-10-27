@@ -177,4 +177,4 @@ Demo 的 `make mock_ci` 在 push 前通过 `Demo/scripts/push_icu.py` 将受支�
 Android，不自动修复历史词条。业务 CI 模板使用同一脚本，详见 Demo README。
 普通 PR CI 额外执行 `Demo/tests/cli_icu_smoke.py`：真实固定 CLI 只连接 localhost 协议 fixture，
 使用合成凭据验证 multipart 上传、ZIP 下载和 validate，不读取 GitHub Secret，不写真实项目。
-SDK 的可选语言目录、默认 namespace 与自动加载测试使用隔离网络和缓存；Demo 仍锁定已发布版本。
+SDK 的 Android 对齐语言匹配、默认 namespace 与按需预加载测试使用隔离网络和缓存；Demo 仍锁定已发布版本。

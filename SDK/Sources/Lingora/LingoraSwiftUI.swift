@@ -8,12 +8,15 @@ import SwiftUI
 public final class LingoraSwiftUIUpdater: ObservableObject {
     private var task: Task<Void, Never>?
 
-    /// 订阅指定 Lingora 实例的翻译更新。
+    /// 对齐 Android tFlow：先显示已有值，再按需预加载；语言切换时重复此过程。
     public init(lingora: Lingora = .shared) {
         task = Task { [weak self] in
-            for await _ in lingora.onTranslationsUpdated() {
+            let updates = lingora.onTranslationsUpdated()
+            await lingora.preload()
+            for await _ in updates {
                 guard !Task.isCancelled else { return }
                 self?.objectWillChange.send()
+                await lingora.preload()
             }
         }
     }

@@ -1,28 +1,28 @@
-// 验证目录校验与保守的地区、文字系统匹配。
-import Foundation
+// 使用 Android 相同的候选标签案例验证语言匹配。
 import XCTest
 @testable import Lingora
 
-/// 验证语言选择及目录输入的确定性边界。
+/// 避免引入 Android 没有的跨地区选择和文字系统推断。
 final class LanguageResolverTests: XCTestCase {
-    /// 精确命中优先，不按数组顺序随机选择，也不跨简繁文字系统。
-    func testMatching() {
-        XCTAssertEqual(LanguageResolver.resolve("zh-TW", available: ["zh-CN", "zh-Hant", "en-US"], defaultLanguage: "en-US"), "zh-Hant")
-        XCTAssertEqual(LanguageResolver.resolve("zh-HK", available: ["zh-CN", "en-US"], defaultLanguage: "en-US"), "en-US")
+    /// 有目录时按候选标签匹配，无目录则精确请求；默认语言无需存在于目录中。
+    func testAndroidMatchingOrder() {
+        XCTAssertEqual(LanguageResolver.resolve("zh-Hant-TW", available: ["zh", "zh-TW", "zh-Hant"], defaultLanguage: nil), "zh-Hant")
+        XCTAssertEqual(LanguageResolver.resolve("zh-TW", available: ["zh-Hant", "zh"], defaultLanguage: nil), "zh")
         XCTAssertEqual(LanguageResolver.resolve("en-AU", available: ["en-US", "en", "en-GB"], defaultLanguage: nil), "en")
-        XCTAssertEqual(LanguageResolver.resolve("en-AU", available: ["en-US", "en-GB"], defaultLanguage: nil), "en-GB")
+        XCTAssertNil(LanguageResolver.resolve("en-AU", available: ["en-US", "en-GB"], defaultLanguage: nil))
         XCTAssertEqual(LanguageResolver.resolve("EN-us", available: ["en-US", "en"], defaultLanguage: nil), "en-US")
-        XCTAssertEqual(LanguageResolver.resolve("fr-CA", available: ["ja"], defaultLanguage: nil), "fr-CA")
-        XCTAssertEqual(LanguageResolver.resolve("fr-CA", available: [], defaultLanguage: "en"), "fr-CA")
-        XCTAssertEqual(LanguageResolver.resolve("sr-Latn", available: ["sr-Cyrl"], defaultLanguage: nil), "sr-Latn")
+        XCTAssertEqual(LanguageResolver.resolve("fr-CA", available: nil, defaultLanguage: "en"), "fr-CA")
+        XCTAssertEqual(LanguageResolver.resolve("fr-CA", available: [], defaultLanguage: "en"), "en")
+        XCTAssertEqual(LanguageResolver.resolve("fr-CA", available: ["ja"], defaultLanguage: "en-US"), "en-US")
+        XCTAssertEqual(LanguageResolver.resolve("sr-Latn-RS-REVISED", available: ["sr-RS-REVISED", "sr"], defaultLanguage: nil), "sr-RS-REVISED")
+        XCTAssertNil(LanguageResolver.resolve("sr-Latn", available: ["sr-Cyrl"], defaultLanguage: nil))
     }
 
-    /// 目录不能带路径、重复标签或超大输入，允许空目录保持精确请求。
-    func testManifestValidation() throws {
-        XCTAssertEqual(try LanguageManifest(data: Data(#"{"locales":["en-US","zh-CN"]}"#.utf8)).locales, ["en-US", "zh-CN"])
-        for json in [#"{"locales":["en","EN"]}"#, #"{"locales":["../en"]}"#, #"{"locales":[1]}"#, #"{}"#] {
-            XCTAssertThrowsError(try LanguageManifest(data: Data(json.utf8)))
-        }
-        XCTAssertThrowsError(try LanguageManifest(data: Data(repeating: 32, count: 256 * 1024 + 1)))
+    /// 静态目录拒绝路径和重复标签，空数组与未知目录 nil 明确区分。
+    func testListValidation() {
+        XCTAssertTrue(LanguageResolver.validList([]))
+        XCTAssertTrue(LanguageResolver.validList(["en-US", "zh-CN"]))
+        XCTAssertFalse(LanguageResolver.validList(["en", "EN"]))
+        XCTAssertFalse(LanguageResolver.validList(["../en"]))
     }
 }
