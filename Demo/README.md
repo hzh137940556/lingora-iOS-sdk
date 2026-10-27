@@ -89,6 +89,9 @@ make cli-init LINGORA_CONFIG=ci/lingora.local.json
 - `fileStructureTemplate` 使用 `{languageTag}.lproj/{namespace}.{extension}`。
 - 保持 `forceMode=KEEP`、`removeOtherKeys=false`，生成目录不要指向源码目录。
 
+仓库默认配置指向 `Lingora iOS Demo CI`（`1cc50f64-d46f-4360-ab40-561b4317dcaa`）的
+`develop` 分支，基础语言为 `en-US`，目标语言为 `ja` / `zh-CN`。
+
 JSON 内相对路径以配置文件目录为基准；命令行 `--path` 以当前工作目录为基准。
 Demo Makefile 分别覆盖 app/common 输出目录，避免 `emptyDir=true` 清理另一个 namespace 的资源。
 
@@ -113,6 +116,12 @@ API Key 由 CLI 读取环境变量；不进入 App。按项目约定提交无凭
 `.strings` 和 `.stringsdict` 都存在且非空。若项目没有 plural 或只有单个 namespace，应调整检查器。
 该门槛不代表所有 key 均已翻译。`KEEP` 不覆盖远端已有非空英语，push 不执行自动翻译或发布 CDN；
 成功上传不会在后续构建失败时回滚。
+
+当前开发服务的 Apple plural 导入会把 `%lld` 原样留在 ICU 分支内，导出时可能变为
+`%%lld`，此时 CLI 会报 `Placeholder mismatch` 并保留原输出。服务端 plural 应使用
+`{count, plural, other {# 个项目}}` 这样的 ICU 数量占位符；不要关闭校验或修改下载文件
+绕过错误。修正已有词条后，`KEEP` 会保留修正值，但新增 plural 仍需检查服务端内容。
+CLI 项目配置不等于 Content Delivery 发布配置，push/pull 不会自动更新运行时 CDN。
 
 ## 生成资源与环境地址
 

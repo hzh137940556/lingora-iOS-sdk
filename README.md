@@ -24,7 +24,7 @@ SDK 的安装与公开 API 说明见 [SDK/README.md](SDK/README.md)。
 
 ## Demo 与 CLI
 
-Demo 使用开发项目 `abbf860f-e7cf-423b-8cf2-5ec1fd70ed15`、`develop` 分支、`app` 与
+Demo 使用开发项目 Lingora iOS Demo CI（`1cc50f64-d46f-4360-ab40-561b4317dcaa`）、`develop` 分支、`app` 与
 `common` namespace、`en-US` 基础语言以及 `ja` / `zh-CN` 目标语言。
 
 `LingoraDemo` target 持有 `app` UI 和 Bundle fallback；`LingoraCommon` framework target
