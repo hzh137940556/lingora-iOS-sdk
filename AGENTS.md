@@ -12,7 +12,7 @@
 ## Package 边界
 
 - `SDK/` 是唯一 Swift Package 根目录；`SDK/Package.swift` 只声明 `Lingora` library target 和 `LingoraTests`，不得包含 Demo target。
-- `Demo/LingoraDemo.xcodeproj` 声明 `LingoraDemo` App target 和测试 namespace 隔离的 `LingoraCommon` framework target；两者只通过 `../SDK` local package reference 使用公开 `Lingora` product。
+- `Demo/LingoraDemo.xcodeproj` 声明 `LingoraDemo` App target 和测试 namespace 隔离的 `LingoraCommon` framework target；两者只通过同一配置选定的 local 或 remote package reference 使用公开 `Lingora` product。
 - `SDK/Sources/Lingora` 不得读取 Demo、CLI 配置、App Bundle ID 或 Demo 的 Content Delivery URL；`SDK/` 不得包含仓库级脚本或 Demo 文件。
 - 公共 API 保持 Tolgee 风格的 singleton、`initialize`、`remoteFetch`、`translate`、locale 切换和更新流。
 - 网络或无效远端数据不得清空最后有效翻译；缓存写入使用原子替换。
@@ -20,11 +20,17 @@
 
 ## Demo 与 CLI 边界
 
-- Demo App 通过本地 Swift Package reference 使用公开 product `Lingora`，并链接 `LingoraCommon`；framework 自己持有 UI、`common` namespace 和 Bundle fallback 资源，不读取 SDK 内部类型。
+- Demo App 通过配置选定的 Swift Package reference 使用公开 product `Lingora`，并链接 `LingoraCommon`；framework 自己持有 UI、`common` namespace 和 Bundle fallback 资源，不读取 SDK 内部类型。
 - Demo 在创建 `Lingora` 实例时传入公开 Content Delivery URL；SDK Package 不持有环境 URL。
 - `LINGORA_API_KEY` 只用于显式执行的 CLI 进程，不写入 Xcode 配置、源码、日志或示例。
 - Demo 只安装 `lingora-cli.version` 固定版本并调用公开命令；普通 Xcode build 不运行 CLI。
 - 基础资源位于 `Resources/en.lproj`，生成资源只写 `Generated/` 并忽略提交。
+- `Demo/sdk-source.json` 统一配置 local/dev/release；`configure_sdk.py` 将选择持久化到实际 Xcode 工程，配置与工程必须一致。普通构建和 Xcode 检查但不自动改写。
+- local 只读取相对 `localPath`，version 为空；dev 必须为 `X.Y.Z-dev.N`，release 必须为 `X.Y.Z`，都使用 exactVersion，远端不访问或回退本地 SDK。
+- fixture 是测试专用入口，使用同一配置逻辑在无 SDK 的隔离消费者验证两个渠道，file URL 仅测试可用，不修改当前工程选择。
+- Demo 公开 URL 由 build setting 写入 Info.plist；CI 必须显式注入，不能静默使用工程开发默认值。
+- CLI 顺序固定为 validate/push/pull/validate/资源检查，即使 `make -j` 也必须串行，失败立即退出。
+- 真实翻译工作流仅在 develop 且 `LINGORA_TRANSLATIONS_ENABLED=true` 时运行，Secret 仅用于 CLI 步骤。
 
 ## 验证与发布
 
@@ -32,6 +38,9 @@
 make sdk-build
 make sdk-test
 make demo-build
+make demo-configure SDK_MODE=local
+make demo-test
+make demo-fixture
 make check-boundaries
 make release-test
 make verify

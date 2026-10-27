@@ -44,6 +44,7 @@ expected = {("Lingora", "library"), ("LingoraTests", "test")}
 if targets != expected:
     raise SystemExit(f"Package targets must be exactly {sorted(expected)}; got {sorted(targets)}")
 '
+python3 "$root/Demo/scripts/configure_sdk.py" --check
 xcodebuild -project "$root/Demo/LingoraDemo.xcodeproj" -list -json \
   | python3 -c '
 import json
@@ -54,6 +55,5 @@ expected = {"LingoraDemo", "LingoraCommon"}
 if targets != expected:
     raise SystemExit(f"Demo project targets must be {sorted(expected)}; got {sorted(targets)}")
 '
-grep -q 'XCLocalSwiftPackageReference "../SDK"' "$root/Demo/LingoraDemo.xcodeproj/project.pbxproj"
 grep -q 'productName = Lingora' "$root/Demo/LingoraDemo.xcodeproj/project.pbxproj"
 grep -q 'productType = "com.apple.product-type.framework"' "$root/Demo/LingoraDemo.xcodeproj/project.pbxproj"

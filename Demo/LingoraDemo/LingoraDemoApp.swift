@@ -5,11 +5,13 @@ import SwiftUI
 /// 提供独立的 Demo App 入口。
 @main
 struct LingoraDemoApp: App {
-    /// 使用 Demo 的公开 Content Delivery URL 初始化 SDK。
+    /// 读取构建时注入的公开地址；未配置时保留 Bundle fallback。
     init() {
-        guard let url = URL(
-            string: "https://cosly-dev.s3.us-west-2.amazonaws.com/lingora/localstrings/ios/v1"
-        ) else { return }
+        guard let value = Bundle.main.object(
+            forInfoDictionaryKey: "LingoraContentDeliveryURL"
+        ) as? String,
+        !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        let url = URL(string: value) else { return }
         Lingora.shared.initialize(
             contentDeliveryURL: url,
             locale: Locale(identifier: "en-US"),

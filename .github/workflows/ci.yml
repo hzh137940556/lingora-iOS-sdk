@@ -160,3 +160,14 @@ jobs:
             printf -- '- Package snapshot SHA：`%s`\n' "$PACKAGE_SHA"
             printf -- '- Package URL：`https://github.com/%s.git`\n' "$GITHUB_REPOSITORY"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  consume-published-package:
+    name: Verify published Swift Package
+    needs: [verify, publish]
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ios-demo-smoke.yml
+    with:
+      version: ${{ needs.verify.outputs.version }}
+      source_sha: ${{ needs.verify.outputs.sha }}

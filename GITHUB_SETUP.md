@@ -101,3 +101,45 @@ snapshot 的父提交和目录树都对应已验证 source SHA，只重试原 pu
 
 发布完成后用一个不含 SDK 源码副本的独立消费工程解析仓库 URL 和固定版本；本地 Demo 的 local package
 reference 只能证明 target 边界和源码构建通过，不能替代真实远端 SwiftPM 下载验收。
+
+发布工作流现在自动调用 `iOS Demo published package`：只检出 source SHA 中的 Demo，以精确 Tag
+先用 `configure_sdk.py` 将 dev/release 和精确版本写入实际 Demo 工程，再解析远端 Package、编译 App 和 framework。也可在 Actions 中手动提供 version 和完整 source SHA。
+验收失败不会撤销已发布 Tag；先判断网络或消费配置问题，SDK 代码问题必须发布新版本。
+该检查不需要 Lingora API Key；模拟器构建成功不代表真机安装、UI 或 CDN 内容已经验收。
+
+## 7. Demo 翻译同步 CI
+
+`.github/workflows/ios-demo-translations.yml` 在 develop 的 Demo/工作流变更或手动选择 develop 时运行。
+首次启用前，先确认 `Demo/ci/lingora.dev.json` 的 Project/Branch 是获准使用的开发翻译目标，
+确认目标语言与 plural 已有可下载内容，然后在 Actions 设置中添加：
+
+| 类型 | 名称 | 值/用途 |
+| --- | --- | --- |
+| Secret | `LINGORA_API_KEY` | 该项目和分支的上传/下载密钥 |
+| Variable | `LINGORA_CONTENT_DELIVERY_URL` | 对应 APPLE_SDK 的公开 URL，不能为空 |
+| Variable | `LINGORA_IOS_SDK_VERSION` | 实际已发布的固定 dev 版本 `X.Y.Z-dev.N` |
+| Variable | `LINGORA_TRANSLATIONS_ENABLED` | 配置完成后设置 `true`，允许真实同步 |
+
+未启用时同步 Job 跳过，普通 PR 与 `make verify` 始终不写翻译服务。工作流进入默认分支后才能
+稳定使用手动入口。手动选择非 develop 分支不会同步，上传前还会拒绝落后于最新 develop 的提交。
+
+启用后流程为固定 CLI → validate → push → app/common pull → validate → 必需文件检查 →
+远端固定版本 Package 构建 → 检查生成资源进入正确 Bundle → 上传模拟器 App ZIP（保留 7 天）。
+只检出 Demo，在上传前通过同一配置命令应用固定 dev 版本，不允许本地 SDK 源码兜底。API Key 仅用于同步步骤，不传给 Xcode。
+成功 push 不因后续失败回滚，KEEP 不覆盖已有非空值；CLI 同步不会自动发布 Content Delivery。
+
+工作流文件和文档不会修改 GitHub Settings，也不会自动创建平台翻译或 CDN 发布配置。
+首次验收需分别确认 Actions 步骤、产物内资源、模拟器运行与 CDN 内容；真机 IPA 沿用独立签名流程。
+业务仓库可复制 [消费项目 CI 模板](Demo/ci/examples/README.md)，无需使用本仓库的发布权限。
+
+
+## 8. 日常 Demo 配置与普通 CI
+
+`Demo/sdk-source.json` 与实际 `project.pbxproj` 一起维护。先关闭 Xcode，再执行
+`make demo-configure SDK_MODE=local` 或带固定版本的 dev/release 配置，随后重新打开工程。
+仅修改 JSON 时须再执行配置命令；构建期的检查只报告不一致，不会切换依赖。
+
+普通 `make verify` 验证当前工程配置，并额外在隔离消费者中验证 dev/release fixture。
+CI 不自动改写提交中的选择：若提交远端模式，其版本必须已经存在。fixture 使用真实 SDK 源码的
+临时 Git Tag，不需要翻译服务密钥，也不代表真实发布成功。
+发布后验收与翻译同步在各自 Runner 检出中应用精确远端模式，不影响开发者本地配置。

@@ -1,0 +1,53 @@
+# 独立消费已发布版本；发布成功后复用相同验收。
+name: iOS Demo published package
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact X.Y.Z or X.Y.Z-dev.N
+        required: true
+        type: string
+      source_sha:
+        description: Full source commit containing Demo
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  consume:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      SDK_VERSION: ${{ inputs.version }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      LINGORA_CONTENT_DELIVERY_URL: ''
+    steps:
+      - name: Validate source
+        shell: bash
+        run: '[[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          sparse-checkout: Demo
+          persist-credentials: false
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4'
+      - name: Build without local SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -d SDK
+          mode=release
+          if [[ "$SDK_VERSION" == *-dev.* ]]; then mode=dev; fi
+          python3 Demo/scripts/configure_sdk.py --mode "$mode" --version "$SDK_VERSION"
+          python3 Demo/scripts/build_demo.py
+          printf 'Verified published Swift Package %s with isolated iOS App/framework.\n' "$SDK_VERSION" >> "$GITHUB_STEP_SUMMARY"

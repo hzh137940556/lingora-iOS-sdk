@@ -13,10 +13,14 @@ Demo/LingoraDemo.xcodeproj/  独立 Xcode 工程
 scripts/                     仓库边界和发布脚本，不进入 Package
 ```
 
-Demo 只通过 `../SDK` local package reference 链接公开 `Lingora` product。Xcode 展开该依赖时只会看到
-`SDK/` 内的 Package 文件，不会再把 `Demo/`、`scripts/` 或仓库文档显示成 SDK 内容。
+Demo 通过 `Demo/sdk-source.json` 选择 local/dev/release，并由配置命令更新实际 Xcode 工程。
+local 引用 `../SDK`，dev/release 引用远端精确版本；两者都只链接公开 `Lingora` product，不回退源码。
+切换示例：`make demo-configure SDK_MODE=dev SDK_VERSION=X.Y.Z-dev.N`，随后重新打开 Demo 工程。
+当前默认 local；远端版本需要实际发布后使用。
 
 SDK 的安装与公开 API 说明见 [SDK/README.md](SDK/README.md)。
+本地/远端 Package 消费、CLI 命令和资源打包见 [Demo 接入指南](Demo/README.md)。
+业务仓库的自动同步见 [iOS CI 模板](Demo/ci/examples/README.md)。
 
 ## Demo 与 CLI
 
@@ -45,6 +49,8 @@ make mock_ci
 make sdk-build
 make sdk-test
 make demo-build
+make demo-test
+make demo-fixture
 make check-boundaries
 make release-test
 make verify
@@ -52,6 +58,9 @@ make verify
 
 所有 SDK 命令显式使用 `--package-path SDK`。边界检查同时验证 SwiftPM 只有 `Lingora` 与
 `LingoraTests` 两个 target，以及 Demo 工程只有 `LingoraDemo` 与 `LingoraCommon` 两个 target。
+`demo-fixture` 用真实 SDK 创建临时 Git Package，分别应用 dev/release 配置，在隔离消费者中构建 Demo、校验双 Bundle
+生成资源；无网络翻译同步，不修改真实版本 Tag。`make verify` 包含这一检查。
+运行时 manifest、语言发现等协议待决项单独记录在 [运行时对齐清单](docs/runtime-alignment.md)。
 
 ## 发布
 
