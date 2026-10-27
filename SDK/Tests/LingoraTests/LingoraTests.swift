@@ -289,6 +289,94 @@ final class LingoraTests: XCTestCase {
         )
     }
 
+    /// 创建同时含原生资源和 SDK JSON 的独立资源 Bundle。
+    private func makeJSONBundle(_ files: [String: String]) throws -> Bundle {
+        let root = temporary.appendingPathComponent(UUID().uuidString + ".bundle")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let info = ["CFBundleIdentifier": "io.lingora.tests." + UUID().uuidString,
+                    "CFBundleDevelopmentRegion": "en"]
+        try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+            .write(to: root.appendingPathComponent("Info.plist"))
+        for (path, contents) in files {
+            let url = root.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(contents.utf8).write(to: url)
+        }
+        return try XCTUnwrap(Bundle(url: root))
+    }
+
+    /// 无网络也能格式化 Bundle JSON，按语言和 namespace 隔离并回退到原生资源。
+    func testBundledJSONOfflineAndLocaleFallback() async throws {
+        let bundle = try makeJSONBundle([
+            "Lingora/app/ja.json": #"{"hello":"こんにちは %@","items":{"variations":{"plural":{"other":"%lld 個"}}}}"#,
+            "Lingora/app/en.json": #"{"default":"Development","englishOnly":{"variations":{"plural":{"one":"%lld item","other":"%lld items"}}},"items":{"variations":{"plural":{"one":"%lld item","other":"%lld items"}}}}"#,
+            "Lingora/common/ja.json": #"{"hello":"Common %@"}"#,
+            "Lingora/ja.json": #"{"hello":"Default table"}"#,
+            "en.lproj/app.strings": #""native" = "Native";"#,
+        ])
+        let lingora = Lingora(session: makeSession(), cacheDirectory: temporary.appendingPathComponent("cache"))
+        lingora.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!,
+                           locale: Locale(identifier: "ja-JP"), language: "ja-JP", namespaces: ["app", "common"],
+                           bundledTranslationsDirectory: "Lingora")
+        XCTAssertEqual(lingora.translate("hello", "iOS", table: "app", bundle: bundle), "こんにちは iOS")
+        XCTAssertEqual(lingora.translate("hello", "iOS", table: "common", bundle: bundle), "Common iOS")
+        XCTAssertEqual(lingora.translate("hello", bundle: bundle), "Default table")
+        XCTAssertEqual(lingora.translate("items", Int64(3), table: "app", bundle: bundle), "3 個")
+        XCTAssertEqual(lingora.translate("default", table: "app", bundle: bundle), "Development")
+        XCTAssertEqual(lingora.translate("englishOnly", Int64(1), table: "app", bundle: bundle), "1 item")
+        XCTAssertEqual(lingora.translate("native", table: "app", bundle: bundle), "Native")
+        XCTAssertEqual(lingora.translate("missing", table: "app", bundle: bundle), "missing")
+        MockURLProtocol.error = URLError(.notConnectedToInternet)
+        await lingora.remoteFetch()
+        XCTAssertNil(lingora.lastFetchSource)
+        XCTAssertEqual(lingora.translate("hello", "offline", table: "app", bundle: bundle), "こんにちは offline")
+        try lingora.setCustomLocale(Locale(identifier: "en"), language: "en")
+        XCTAssertEqual(lingora.translate("items", Int64(1), table: "app", bundle: bundle), "1 item")
+        XCTAssertEqual(lingora.translate("items", Int64(2), table: "app", bundle: bundle), "2 items")
+    }
+
+    /// 远端优先、缺失 Key 使用 JSON，并保持调用方 Bundle 隔离和清缓存后的离线资源。
+    func testBundledJSONRemotePrecedenceAndBundleIsolation() async throws {
+        let first = try makeJSONBundle(["Lingora/app/en.json": #"{"hello":"First","local":"Local"}"#])
+        let second = try makeJSONBundle(["Lingora/app/en.json": #"{"hello":"Second"}"#])
+        let lingora = Lingora(session: makeSession(), cacheDirectory: temporary.appendingPathComponent("cache"))
+        lingora.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!,
+                           locale: Locale(identifier: "en"), language: "en", namespaces: ["app"],
+                           bundledTranslationsDirectory: "Lingora")
+        XCTAssertEqual(lingora.translate("hello", table: "app", bundle: first), "First")
+        XCTAssertEqual(lingora.translate("hello", table: "app", bundle: second), "Second")
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"hello":"Remote"}"#.utf8))]
+        await lingora.remoteFetch()
+        XCTAssertEqual(lingora.translate("hello", table: "app", bundle: first), "Remote")
+        XCTAssertEqual(lingora.translate("local", table: "app", bundle: first), "Local")
+        try lingora.clearCache()
+        XCTAssertEqual(lingora.translate("hello", table: "app", bundle: first), "First")
+    }
+
+    /// 默认关闭；无效 JSON、超限文件和不安全路径不能破坏原生回退。
+    func testBundledJSONOptInAndInvalidResources() throws {
+        let bundle = try makeJSONBundle([
+            "Lingora/app/en-US.json": #"{"hello":{"variations":{"plural":{"one":"bad"}}}}"#,
+            "Lingora/app/en.json": #"{"hello":"JSON"}"#,
+            "Lingora/large/en.json": String(repeating: " ", count: TranslationDocument.maximumBytes + 1),
+            "en.lproj/app.strings": #""hello" = "Native";"#,
+        ])
+        let disabled = Lingora(session: makeSession(), cacheDirectory: temporary.appendingPathComponent("off"))
+        disabled.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, locale: Locale(identifier: "en-US"))
+        XCTAssertEqual(disabled.translate("hello", table: "app", bundle: bundle), "Native")
+        let enabled = Lingora(session: makeSession(), cacheDirectory: temporary.appendingPathComponent("on"))
+        enabled.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!,
+                           locale: Locale(identifier: "en-US"), bundledTranslationsDirectory: "Lingora")
+        XCTAssertEqual(enabled.translate("hello", table: "app", bundle: bundle), "JSON")
+        XCTAssertEqual(enabled.translate("hello", table: "large", bundle: bundle), "hello")
+        let store = BundledTranslationStore()
+        XCTAssertNil(store.template(for: "hello", bundle: bundle, directory: "Lingora",
+                                    language: "en", table: "../Lingora/app", locale: Locale(identifier: "en"), arguments: []))
+        let invalid = Lingora(session: makeSession(), cacheDirectory: temporary.appendingPathComponent("invalid"))
+        invalid.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, bundledTranslationsDirectory: "../Lingora")
+        XCTAssertFalse(invalid.isInitialized)
+    }
+
     /// 默认不启用全局 Bundle swizzling。
     func testSwizzlingIsOptIn() {
         XCTAssertFalse(BundleSwizzler.isEnabled)
