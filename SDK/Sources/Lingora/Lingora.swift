@@ -40,7 +40,7 @@ public final class Lingora {
         )
     }
 
-    /// 初始化 Content Delivery、语言和 namespace；无效配置保持未初始化状态。
+    /// 初始化 Content Delivery、语言、namespace 和可选 Bundle JSON 目录；无效配置不启用。
     public func initialize(
         contentDeliveryURL: URL,
         locale: Locale = .current,
@@ -248,7 +248,7 @@ public final class Lingora {
         }
     }
 
-    /// 清空内存和当前 App 版本的磁盘缓存。
+    /// 清空远端内存和当前 App 版本的磁盘缓存，保留不可变 Bundle 资源。
     public func clearCache() throws {
         documents = [:]
         generation &+= 1

@@ -1,7 +1,7 @@
 # Lingora Swift Package
 
 Lingora 的 iOS 运行时 SDK，负责读取 `APPLE_SDK` Content Delivery、缓存远端翻译，并在远端不可用时
-回退到调用方 Bundle 的 `.strings` / `.stringsdict`。Package 只包含 `Lingora` library target 和
+回退到调用方 Bundle 的可选 `APPLE_SDK` JSON 或 `.strings` / `.stringsdict`。Package 只包含 `Lingora` library target 和
 `LingoraTests` test target。
 
 ## 要求与安装
@@ -60,7 +60,7 @@ LingoraText("welcome", table: "app")
 LingoraText("items_count", Int64(2), table: "app")
 ```
 
-查找顺序为远端内存文档、磁盘缓存、调用方 Bundle 的 `.strings/.stringsdict`、Key。
+查找顺序为远端内存文档、磁盘缓存、可选 Bundle JSON、调用方 Bundle 的 `.strings/.stringsdict`、Key。
 `setCustomLocale(_:language:)` 切换语言后需调用 `remoteFetch()`；传入其他 language 的
 `remoteFetch(language:)` 只预取缓存，不切换当前语言。
 
