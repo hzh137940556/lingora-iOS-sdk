@@ -423,13 +423,14 @@ final class LingoraTests: XCTestCase {
     /// 同一 URL 的并发刷新按顺序写盘，旧请求不再覆盖最新请求的内存状态。
     func testConcurrentRefreshKeepsLatestMemoryAndCache() async throws {
         MockURLProtocol.responses = [
-            .init(status: 200, headers: [:], data: Data(#"{"hello":"old"}"#.utf8), delay: 0.1),
+            .init(status: 200, headers: [:], data: Data(#"{"hello":"old"}"#.utf8), delay: 0.2),
             .init(status: 200, headers: [:], data: Data(#"{"hello":"new"}"#.utf8)),
         ]
         let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
         sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
         let first = Task { await sdk.remoteFetch() }
-        try await Task.sleep(for: .milliseconds(20))
+        let started = await waitUntil { MockURLProtocol.requestCount == 1 }
+        XCTAssertTrue(started)
         let second = Task { await sdk.remoteFetch() }
         try await Task.sleep(for: .milliseconds(20))
         XCTAssertEqual(MockURLProtocol.requestCount, 1, "Same URL must not fetch concurrently")
@@ -487,11 +488,12 @@ final class LingoraTests: XCTestCase {
 
     /// 取消排队中的刷新不会再发请求，也不能将旧请求结果应用为新请求成功。
     func testCancelledQueuedRefreshDoesNotFetch() async throws {
-        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"hello":"old"}"#.utf8), delay: 0.1)]
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"hello":"old"}"#.utf8), delay: 0.2)]
         let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
         sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
         let first = Task { await sdk.remoteFetch() }
-        try await Task.sleep(for: .milliseconds(20))
+        let started = await waitUntil { MockURLProtocol.requestCount == 1 }
+        XCTAssertTrue(started)
         let queued = Task { await sdk.remoteFetch() }
         try await Task.sleep(for: .milliseconds(10))
         queued.cancel()
