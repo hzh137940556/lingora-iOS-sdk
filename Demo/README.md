@@ -149,7 +149,7 @@ LINGORA_CONTENT_DELIVERY_URL=https://cosly-dev.s3.us-west-2.amazonaws.com/lingor
 - 生成资源只保留在本机或 CI 工作区，不提交 Git。
 
 公开 URL 由 Xcode build setting `LINGORA_CONTENT_DELIVERY_URL` 写入 App Info.plist，
-App 从 `LingoraContentDeliveryURL` 读取；默认值仍为原 Demo 开发地址，UI 不变。
+App 从 `LingoraContentDeliveryURL` 读取；默认值为上述 iOS Demo Dev 公开前缀，UI 不变。
 SDK Package 不持有地址。构建脚本将同名环境变量显式转成 Xcode 参数，覆盖工程默认值：
 
 ```bash
