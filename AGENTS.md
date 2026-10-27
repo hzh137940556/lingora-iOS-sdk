@@ -45,5 +45,6 @@ make verify
 - 发布前运行完整 `make verify`；只有 publish Job 拥有 `contents: write`，不得移动或覆盖已有 Tag。
 - `make package-test` 用真实 SDK 创建临时 dev/release Tag 并编译独立消费者，不能使用 Demo 或本地 path 依赖代替版本解析；生成物只保留在临时目录。
 - 发布后由 `sdk-package-smoke.yml` 只检出 scripts、解析远端精确版本并验证 macOS/iOS Simulator 编译；SDK 发布验收不依赖 Demo 接入 PR，Demo 是否切换版本独立维护。
+- `sdk-dev.version` 的变更合入 develop 后自动申请对应 dev 版本发布；保留完整验证和环境人工审批，其他 push 不重复发版，稳定版仍手动发起。
 - 仅明确要求发版时运行 `make publish-dev VERSION=X.Y.Z-dev.N` 或 `make publish VERSION=X.Y.Z`；命令只请求 CI，不在本机创建 Tag。
 - 修改后检查两个 target 的实际 diff 和 `git diff --check`，未验证项必须明确说明。

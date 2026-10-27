@@ -51,13 +51,25 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Read merged dev release request
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        id: planned
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          SOURCE_BRANCH: ${{ github.ref_name }}
+        run: >-
+          python3 scripts/sdk_release.py plan-dev
+          --ref-name "$SOURCE_BRANCH"
+          --before-sha "$BEFORE_SHA"
+          --github-output "$GITHUB_OUTPUT"
+
       - name: Verify release source and approval configuration
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || steps.planned.outputs.version != ''
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_CHANNEL: ${{ inputs.channel }}
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.channel || steps.planned.outputs.channel }}
+          RELEASE_VERSION: ${{ inputs.version || steps.planned.outputs.version }}
           RELEASE_REF_TYPE: ${{ github.ref_type }}
           RELEASE_REF_NAME: ${{ github.ref_name }}
           RELEASE_SHA: ${{ github.sha }}
@@ -86,9 +98,9 @@ jobs:
     name: >-
       ${{ needs.verify.outputs.channel
           && format('Publish iOS SDK [{0}] — {1}', needs.verify.outputs.channel, needs.verify.outputs.version)
-          || 'Publish iOS SDK (dispatch only)' }}
+          || 'Publish iOS SDK (no release requested)' }}
     needs: verify
-    if: github.event_name == 'workflow_dispatch'
+    if: needs.verify.outputs.version != ''
     runs-on: macos-15
     timeout-minutes: 10
     environment:
@@ -164,7 +176,7 @@ jobs:
   verify-published-sdk:
     name: Verify published SDK independently
     needs: [verify, publish]
-    if: github.event_name == 'workflow_dispatch'
+    if: needs.verify.outputs.version != ''
     permissions:
       contents: read
     uses: ./.github/workflows/sdk-package-smoke.yml
