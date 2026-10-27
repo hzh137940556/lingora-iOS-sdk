@@ -141,6 +141,6 @@ python3 scripts/build_demo.py --check-resources
 `make test` 使用命令替身和临时资源测试顺序、失败停止和打包检查，不执行真实 push/pull。
 仓库根目录 `make verify` 还运行 SDK 测试、发布规则测试、本地 Demo 和真实 SDK fixture 消费构建。
 
-普通 CI 不使用翻译密钥。发布后的 `iOS Demo published package` 只检出 Demo，下载精确版本并构建；
-也可手动提供版本和包含 Demo 的完整 source SHA 重跑。真实翻译 CI、变量配置及启用步骤见
+普通 CI 不使用翻译密钥。`iOS Demo published package` 通过手动提供版本和包含 Demo 的完整 source SHA 验收，
+只检出 Demo，下载精确版本并构建；不参与 SDK 发布。真实翻译 CI、变量配置及启用步骤见
 [GitHub 配置](../GITHUB_SETUP.md)。业务项目可复制 [CI 模板](ci/examples/README.md)。

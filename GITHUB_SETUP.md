@@ -102,9 +102,9 @@ snapshot 的父提交和目录树都对应已验证 source SHA，只重试原 pu
 发布完成后用一个不含 SDK 源码副本的独立消费工程解析仓库 URL 和固定版本；本地 Demo 的 local package
 reference 只能证明 target 边界和源码构建通过，不能替代真实远端 SwiftPM 下载验收。
 
-发布工作流现在自动调用 `iOS Demo published package`：只检出 source SHA 中的 Demo，以精确 Tag
-先用 `configure_sdk.py` 将 dev/release 和精确版本写入实际 Demo 工程，再解析远端 Package、编译 App 和 framework。也可在 Actions 中手动提供 version 和完整 source SHA。
-验收失败不会撤销已发布 Tag；先判断网络或消费配置问题，SDK 代码问题必须发布新版本。
+Demo 的 `iOS Demo published package` 是独立手动验收工作流：提供已发布版本和包含 Demo 配置脚本的
+完整 source SHA，只检出 Demo，以同一配置命令应用 dev/release，再构建 App 和 framework。
+SDK 发布与独立 Package 验收在单独 PR 中维护，不依赖此 Demo 工作流。
 该检查不需要 Lingora API Key；模拟器构建成功不代表真机安装、UI 或 CDN 内容已经验收。
 
 ## 7. Demo 翻译同步 CI
@@ -142,4 +142,4 @@ reference 只能证明 target 边界和源码构建通过，不能替代真实�
 普通 `make verify` 验证当前工程配置，并额外在隔离消费者中验证 dev/release fixture。
 CI 不自动改写提交中的选择：若提交远端模式，其版本必须已经存在。fixture 使用真实 SDK 源码的
 临时 Git Tag，不需要翻译服务密钥，也不代表真实发布成功。
-发布后验收与翻译同步在各自 Runner 检出中应用精确远端模式，不影响开发者本地配置。
+Demo 手动验收与翻译同步在各自 Runner 检出中应用精确远端模式，不影响开发者本地配置。

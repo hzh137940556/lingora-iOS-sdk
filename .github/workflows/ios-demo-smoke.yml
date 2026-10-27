@@ -1,4 +1,4 @@
-# 独立消费已发布版本；发布成功后复用相同验收。
+# Demo 手动消费已发布版本；SDK 发布流程独立维护。
 name: iOS Demo published package
 on:
   workflow_dispatch:
@@ -9,14 +9,6 @@ on:
         type: string
       source_sha:
         description: Full source commit containing Demo
-        required: true
-        type: string
-  workflow_call:
-    inputs:
-      version:
-        required: true
-        type: string
-      source_sha:
         required: true
         type: string
 permissions:
