@@ -33,7 +33,7 @@
 - Demo 公开 URL 由 build setting 写入 Info.plist；CI 必须显式注入，不能静默使用工程开发默认值。
 - CLI 顺序固定为 validate/push/pull/validate/资源检查，即使 `make -j` 也必须串行，失败立即退出。
 - 真实翻译工作流仅在 develop 且 `LINGORA_TRANSLATIONS_ENABLED=true` 时运行，Secret 仅用于 CLI 步骤。
-- 普通 CI 可在启用变量后只读验收公开 CDN，使用固定发布 SDK 和无 Bundle 翻译的临时消费者；不传 Secret、不执行 CLI 写入，不放宽 develop 同步门禁。
+- 普通 CI 可在公开 URL 变量非空时只读验收公开 CDN，使用固定发布 SDK 和无 Bundle 翻译的临时消费者；不传 Secret、不执行 CLI 写入，不放宽 develop 同步门禁。
 
 ## 验证与发布
 

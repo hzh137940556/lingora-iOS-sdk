@@ -122,7 +122,10 @@ API Key 由 CLI 读取环境变量；不进入 App。按项目约定提交无凭
 `{count, plural, other {# 个项目}}` 这样的 ICU 数量占位符；不要关闭校验或修改下载文件
 绕过错误。修正已有词条后，`KEEP` 会保留修正值，但新增 plural 仍需检查服务端内容。
 普通参数也应使用 ICU `{name}`（例如 `Hello, {name}!`）；否则 APPLE_SDK 可能把 `%@`
-导出为 `%%@`，导致运行时无法替换参数。现有测试项目已修正；服务端导入问题仍待修复。
+导出为 `%%@`，导致运行时无法替换参数。现有项目已改为运行时可用的 ICU 内容；服务端导入问题仍待修复。
+当前 `.strings` 导出又会原样保留 `{name}`，与 APPLE_SDK 行为不一致，导致 CLI 占位符校验失败。
+因此自动翻译同步暂不启用；必须先修复服务端 `.strings` 参数转换并重跑 `make mock_ci`，
+不能靠删除参数词条、放宽校验或改写下载结果来让 CI 通过。
 CLI 项目配置不等于 Content Delivery 发布配置，push/pull 不会自动更新运行时 CDN。
 
 本项目的 `iOS Demo Dev` Content Delivery 固定绑定 `develop`，格式为 `apple-sdk`，

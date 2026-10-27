@@ -96,7 +96,7 @@ jobs:
 
   delivery:
     name: Published SDK runtime and CDN
-    if: vars.LINGORA_TRANSLATIONS_ENABLED == 'true'
+    if: vars.LINGORA_CONTENT_DELIVERY_URL != ''
     runs-on: macos-15
     timeout-minutes: 15
     steps:
