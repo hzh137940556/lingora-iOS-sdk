@@ -13,6 +13,14 @@ public final class Lingora {
         didSet { stateContinuations.values.forEach { $0.yield(loadState) } }
     }
 
+    public private(set) var availableLanguages: [String] = []
+    public private(set) var resolvedLanguage: String?
+    private var catalogRevision: UInt64 = 0
+    private var languageOptions: LingoraLanguageOptions?
+    private var explicitLanguage = false
+    private var defaultNamespace: String?
+    private var autoLoad: LingoraAutoLoad = .manual
+    private var automaticTask: Task<Void, Never>?
     private var configuration: LingoraConfiguration?
     private var currentLocale = Locale.current
     private var currentLanguage: String?
@@ -53,7 +61,10 @@ public final class Lingora {
         namespaces: Set<String> = [],
         enableDebugLogs: Bool = false,
         enableSwizzling: Bool = false,
-        bundledTranslationsDirectory: String? = nil
+        bundledTranslationsDirectory: String? = nil,
+        defaultNamespace: String? = nil,
+        languageOptions: LingoraLanguageOptions? = nil,
+        autoLoad: LingoraAutoLoad = .manual
     ) {
         guard configuration == nil else {
             emit(.debug, "Repeated initialize call was ignored")
@@ -67,6 +78,18 @@ public final class Lingora {
             emit(.error, "Bundled translation directory must be a safe path component")
             return
         }
+        if let defaultNamespace, !Self.isSafePathComponent(defaultNamespace) {
+            emit(.error, "Invalid default namespace")
+            return
+        }
+        if let options = languageOptions {
+            guard LanguageResolver.validList(options.availableLanguages),
+                  options.defaultLanguage.map(LanguageResolver.validTag) ?? true,
+                  options.manifestFileName.map({ Self.isSafePathComponent($0) && $0.hasSuffix(".json") }) ?? true else {
+                emit(.error, "Invalid language options")
+                return
+            }
+        }
         let resolvedLanguage = language ?? Self.languageTag(for: locale)
         guard Self.isSafePathComponent(resolvedLanguage),
               namespaces.allSatisfy({ Self.isSafePathComponent($0) })
@@ -78,12 +101,19 @@ public final class Lingora {
             contentDeliveryURL: contentDeliveryURL,
             locale: locale,
             language: resolvedLanguage,
-            namespaces: namespaces,
+            namespaces: namespaces.union(defaultNamespace.map { [$0] } ?? []),
             enableDebugLogs: enableDebugLogs
         )
+        self.defaultNamespace = defaultNamespace
+        self.languageOptions = languageOptions
+        self.availableLanguages = languageOptions?.availableLanguages ?? []
+        self.autoLoad = autoLoad
         self.bundledTranslationsDirectory = bundledTranslationsDirectory
+        explicitLanguage = language != nil
+        automaticTask?.cancel()
         currentLocale = locale
         currentLanguage = resolvedLanguage
+        self.resolvedLanguage = nil
         documents = [:]
         generation &+= 1
         isInitialized = true
@@ -95,6 +125,7 @@ public final class Lingora {
         }
         emit(.debug, "Lingora initialized for language \(resolvedLanguage)")
         restoreCachedDocuments(language: resolvedLanguage, generation: generation)
+        if autoLoad != .manual { scheduleAutomaticFetch() }
     }
 
     /// 获取当前语言或预取指定语言；预取不会切换当前展示语言。
@@ -113,6 +144,16 @@ public final class Lingora {
         fetchSequences[requestedLanguage, default: 0] &+= 1
         let sequence = fetchSequences[requestedLanguage]!
         if !isPrefetch { loadState = .loading }
+        if language == nil, !explicitLanguage, languageOptions?.availableLanguages.isEmpty == true,
+           let file = languageOptions?.manifestFileName {
+            let languages = await store.languages(baseURL: configuration.contentDeliveryURL, fileName: file, network: true)
+            guard requestedGeneration == generation, fetchSequences[requestedLanguage] == sequence else { return }
+            if let languages {
+                catalogRevision &+= 1
+                availableLanguages = languages
+            }
+        }
+        let documentLanguage = language != nil || explicitLanguage ? requestedLanguage : matchedLanguage(requestedLanguage)
         let tables = Self.tables(for: configuration)
         let store = self.store
         let baseURL = configuration.contentDeliveryURL
@@ -124,7 +165,7 @@ public final class Lingora {
                 group.addTask {
                     let result = await store.load(
                         baseURL: baseURL,
-                        language: requestedLanguage,
+                        language: documentLanguage,
                         table: table,
                         forceRefresh: forceRefresh
                     )
@@ -157,6 +198,8 @@ public final class Lingora {
             loadState = .fallback(failedTables: failedTables.sorted())
             return
         }
+        if resolvedLanguage != documentLanguage { documents = [:] }
+        resolvedLanguage = documentLanguage
         documents.merge(loaded.mapValues(\.0)) { _, new in new }
         lastFetchDate = Date()
         lastFetchSource = loaded.values.contains { $0.1 == .network }
@@ -193,21 +236,24 @@ public final class Lingora {
         locale providedLocale: Locale
     ) -> String {
         let locale = currentLocale == .current ? providedLocale : currentLocale
+        let remoteLocale = resolvedLanguage != currentLanguage
+            ? resolvedLanguage.map { Locale(identifier: $0) } ?? locale : locale
         if let template = remoteTemplate(
             key,
             arguments: arguments,
             table: table,
-            locale: locale
-        ), let rendered = SafeFormatter.render(template, arguments: arguments, locale: locale) {
+            locale: remoteLocale
+        ), let rendered = SafeFormatter.render(template, arguments: arguments, locale: remoteLocale) {
             return rendered
         }
+        let sdkTable = table ?? defaultNamespace
         if let directory = bundledTranslationsDirectory,
            let template = bundledStore.template(
                for: key,
                bundle: bundle,
                directory: directory,
                language: currentLanguage ?? Self.languageTag(for: locale),
-               table: table,
+               table: sdkTable?.isEmpty == true ? nil : sdkTable,
                locale: locale,
                arguments: arguments
            ), let rendered = SafeFormatter.render(template, arguments: arguments, locale: locale) {
@@ -229,8 +275,11 @@ public final class Lingora {
         guard Self.isSafePathComponent(resolvedLanguage) else {
             throw LingoraError.unsupportedLocale(locale.identifier)
         }
+        explicitLanguage = language != nil
+        automaticTask?.cancel()
         currentLocale = locale
         currentLanguage = resolvedLanguage
+        self.resolvedLanguage = nil
         documents = [:]
         generation &+= 1
         lastFetchDate = nil
@@ -238,6 +287,7 @@ public final class Lingora {
         loadState = .idle
         notifyTranslationsUpdated()
         restoreCachedDocuments(language: resolvedLanguage, generation: generation)
+        if autoLoad == .onInitializeAndLocaleChange { scheduleAutomaticFetch() }
     }
 
     /// 订阅远端文档或语言切换后的刷新事件。
@@ -276,6 +326,9 @@ public final class Lingora {
 
     /// 清空远端内存和当前 App 版本的磁盘缓存，保留不可变 Bundle 资源。
     public func clearCache() throws {
+        availableLanguages = languageOptions?.availableLanguages ?? []
+        automaticTask?.cancel()
+        resolvedLanguage = nil
         documents = [:]
         generation &+= 1
         lastFetchDate = nil
@@ -287,7 +340,7 @@ public final class Lingora {
 
     /// 供可选 Bundle swizzling 查询普通远端文本，避免递归进入 fallback。
     func swizzledTranslation(for key: String, table: String?) -> String? {
-        guard case .text(let text)? = documents[table ?? ""]?.values[key] else {
+        guard case .text(let text)? = documents[table ?? defaultNamespace ?? ""]?.values[key] else {
             return nil
         }
         return text
@@ -300,7 +353,7 @@ public final class Lingora {
         table: String?,
         locale: Locale
     ) -> String? {
-        documents[table ?? ""]?.template(for: key, locale: locale, arguments: arguments)
+        documents[table ?? defaultNamespace ?? ""]?.template(for: key, locale: locale, arguments: arguments)
     }
 
     /// 发送翻译更新事件。
@@ -315,13 +368,22 @@ public final class Lingora {
         let baseURL = configuration.contentDeliveryURL
         let store = self.store
         Task { [weak self] in
+            guard let self else { return }
+            let revision = self.catalogRevision
+            if !self.explicitLanguage, self.languageOptions?.availableLanguages.isEmpty == true,
+               let file = self.languageOptions?.manifestFileName,
+               let languages = await store.languages(baseURL: baseURL, fileName: file, network: false),
+               requestedGeneration == self.generation, self.catalogRevision == revision {
+                self.availableLanguages = languages
+            }
+            let documentLanguage = self.explicitLanguage ? language : self.matchedLanguage(language)
             var cached: [String: TranslationDocument] = [:]
             await withTaskGroup(of: (String, LoadedDocument?).self) { group in
                 for table in tables {
                     group.addTask {
                         let result = await store.cached(
                             baseURL: baseURL,
-                            language: language,
+                            language: documentLanguage,
                             table: table
                         )
                         return (table, result)
@@ -333,14 +395,15 @@ public final class Lingora {
                     }
                 }
             }
-            guard let self,
-                  !Task.isCancelled,
+            guard !Task.isCancelled,
                   requestedGeneration == self.generation,
                   language == self.currentLanguage,
+                  (self.resolvedLanguage == nil || self.resolvedLanguage == documentLanguage),
                   !cached.isEmpty
             else { return }
             let missing = cached.filter { self.documents[$0.key] == nil }
             guard !missing.isEmpty else { return }
+            self.resolvedLanguage = documentLanguage
             self.documents.merge(missing) { current, _ in current }
             if self.lastFetchDate == nil {
                 self.lastFetchDate = Date()
@@ -351,6 +414,22 @@ public final class Lingora {
             }
             self.notifyTranslationsUpdated()
             self.emit(.debug, "Restored language \(language) from cache, tables=\(missing.count)")
+        }
+    }
+
+    /// 显式 language 不使用推断；无可用目录时继续请求原始标签。
+    private func matchedLanguage(_ requested: String) -> String {
+        guard let options = languageOptions else { return requested }
+        return LanguageResolver.resolve(requested, available: availableLanguages, defaultLanguage: options.defaultLanguage)
+    }
+
+    /// 后台刷新不阻塞翻译读取；切换和清缓存取消上一自动任务。
+    private func scheduleAutomaticFetch() {
+        automaticTask?.cancel()
+        let expectedGeneration = generation
+        automaticTask = Task { [weak self] in
+            guard let self, !Task.isCancelled, self.generation == expectedGeneration else { return }
+            await self.remoteFetch(forceRefresh: false)
         }
     }
 

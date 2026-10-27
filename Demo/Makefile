@@ -29,7 +29,7 @@ cli-validate: check_cli
 	$(LINGORA) --config "$(LINGORA_CONFIG)" validate --namespaces common --path "$(LINGORA_COMMON_OUTPUT)"
 
 cli-push: check_cli
-	$(LINGORA) --config "$(LINGORA_CONFIG)" push
+	python3 scripts/push_icu.py --config "$(LINGORA_CONFIG)" --version "$(LINGORA_CLI_VERSION)"
 
 cli-pull: check_cli
 	$(LINGORA) --config "$(LINGORA_CONFIG)" pull --namespaces app --path "$(LINGORA_APP_OUTPUT)"

@@ -31,7 +31,8 @@ Demo 使用开发项目 Lingora iOS Demo CI（`1cc50f64-d46f-4360-ab40-561b4317d
 持有可复用 SwiftUI View、`common` namespace 和自己的 Bundle fallback。两个 target 都只使用
 SDK 的公开 API。
 
-Apple CLI 配置位于 `Demo/ci/lingora.dev.json`。push 使用 `KEEP`，保留服务端已有非空值，且不删除
+Apple CLI 配置位于 `Demo/ci/lingora.dev.json`。`make cli-push` 先用 `Demo/scripts/push_icu.py`
+将受支持的原生参数/复数转成临时 ICU JSON；复杂格式上传前拒绝，具体约束见 Demo README。push 使用 `KEEP`，保留服务端已有非空值，且不删除
 其他 key。pull 使用 `apple-sdk`，分别输出到两个 target 自己的
 `Generated/Lingora/{namespace}/{languageTag}.json`。Xcode 保留 Lingora 文件夹层级，SDK 启用
 Bundle JSON 回退；原生英文资源继续作为最后回退。CLI 无需升级，平台源文本仍须为正确 ICU。普通 Xcode build 不安装或运行 CLI。

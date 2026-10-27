@@ -51,3 +51,10 @@ public enum LingoraLoadState: Sendable, Equatable {
     case fallback(failedTables: [String])
     case cancelled
 }
+
+/// 控制初始化及语言切换后的后台刷新，默认由调用方手动触发。
+public enum LingoraAutoLoad: Sendable {
+    case manual
+    case onInitialize
+    case onInitializeAndLocaleChange
+}

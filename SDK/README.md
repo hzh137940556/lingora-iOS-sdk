@@ -24,7 +24,7 @@ Lingora 的 iOS 运行时 SDK，负责读取 `APPLE_SDK` Content Delivery、缓�
 ```swift
 .package(
     url: "https://github.com/hzh137940556/lingora-iOS-sdk.git",
-    exact: "0.1.0-dev.1"
+    exact: "0.1.0-dev.2"
 )
 ```
 
@@ -136,7 +136,7 @@ framework 或资源 Package 调用 `translate` / `LingoraText` 时仍须传入�
 JSON 按显式 language（未指定时使用 locale 标签）、父语言、Bundle development language
 逐 Key 回退；格式、大小校验与远端文档相同，无效文件不阻止继续回退。
 普通参数和复数复用 APPLE_SDK 格式化，无需再次解析 ICU 或猜测 `%` 转义。
-平台源文本仍应使用正确的 ICU 格式；本功能不改变上传转换行为。
+平台源文本仍应使用正确的 ICU 格式；运行时不修复上传数据。仓库 Demo 的 `push_icu.py` 提供保守的上传前转换。
 
 本地 JSON 不需要 `remoteFetch` 就能使用，不改变 `lastFetchSource` 或写入网络缓存。
 Bundle 是不可变资源，SDK 按 Bundle 路径缓存解析及缺失结果，`clearCache` 仅清理远端缓存。
@@ -144,6 +144,8 @@ Bundle 是不可变资源，SDK 按 Bundle 路径缓存解析及缺失结果，`
 不会改变 `NSLocalizedString` 或系统 plural 的行为。
 
 ## 运行时可靠性与状态
+
+本节新增 API 位于当前源码，尚未包含在已发布的 `0.1.0-dev.2`。
 
 `remoteFetch()` 保持每次主动检查远端的行为。自动或重复触发的调用可以使用
 `remoteFetch(forceRefresh: false)`：同一 language/table 请求失败后冷却 2 秒，再次调用使用当前
@@ -169,3 +171,47 @@ Bundle 是不可变资源，SDK 按 Bundle 路径缓存解析及缺失结果，`
 `setCustomLocale` 不再要求语言存在于 `Bundle.main` 的 lproj 中；JSON-only、framework 和远端
 语言均可按安全语言标签选择。该方法不声明语言已发布，也不自动发现可用语言或发起网络请求；
 缺失内容继续遵循回退顺序，manifest/语言目录协议保持不变。
+
+
+## 可选接入策略（当前源码，尚未发布）
+
+以下 API 不存在于 Demo 固定消费的 `0.1.0-dev.2`，须使用本地 Package 验证；本轮不发布版本。
+所有新增参数都有兼容默认值，已有调用仍精确请求指定语言、手动执行 fetch。
+
+```swift
+Lingora.shared.initialize(
+    contentDeliveryURL: deliveryURL,
+    locale: .current,
+    namespaces: ["common"],
+    bundledTranslationsDirectory: "Lingora",
+    defaultNamespace: "app",
+    languageOptions: .init(
+        availableLanguages: ["en-US", "ja", "zh-CN"],
+        defaultLanguage: "en-US"
+    ),
+    autoLoad: .onInitializeAndLocaleChange
+)
+```
+
+- `defaultNamespace` 自动加入待加载 namespace。省略 table 时远端与 Bundle JSON 查询此 namespace；
+  显式 table（包括空字符串根文档）优先。原生 `.strings/.stringsdict` 仍使用调用方原本的 table，
+  nil 继续代表 Localizable，不把 `app` 自动映射成原生文件名。
+- `languageOptions` 开启匹配：精确标签（大小写等价）→ 同语言且同文字系统的无地区标签 →
+  同语言/文字系统的地区标签（按标签排序，保证确定性）→ 列表中的显式 defaultLanguage。
+  文字系统由 Foundation Locale 推定，`zh-TW` 不会自动匹配 `zh-CN` 或推定为简体的 `zh`。
+  无候选或无目录时仍精确请求原标签，不枚举未知 CDN 路径；按文档选语言，不逐 key 混合远端语言。
+  匹配到其他语言后，远端 plural/格式化使用该文档语言；原生及 Bundle JSON 保持原有回退规则。
+- initialize/setCustomLocale 的显式 `language` 优先，不参与匹配。remoteFetch 显式传 language 同样精确请求；
+  预取其他语言不切换展示语言。`resolvedLanguage` 表示当前有效远端文档语言，尚无文档时为 nil。
+- `availableLanguages` 提供静态或最后有效目录列表。静态非空列表优先；可选
+  `.init(defaultLanguage: "en-US", manifestFileName: "manifest.json")` 从 Delivery 根目录读取
+  `{"locales":["en-US","ja"]}`。目录限制 256 KiB/1000 个不重复安全标签，支持 ETag/304 与原子磁盘缓存；
+  初始化可离线恢复，主动刷新会重新检查。无效、404 或断网保留有效目录，首次失败仍直接请求语言包。
+  **当前服务端只为 android-sdk 自动生成此目录，apple-sdk 没有自动目录**；iOS 优先用静态列表，
+  只有调用方已有兼容的公开目录文件时才配置 manifestFileName，SDK 不上传或创建它。
+- `autoLoad` 默认 `.manual`；`.onInitialize` 仅初始化后刷新；`.onInitializeAndLocaleChange` 也在切换后刷新。
+  后台任务使用 `forceRefresh: false`，不阻塞同步 translate；切换和 clearCache 会取消旧自动任务，
+  generation 保护阻止旧语言覆盖新界面。translate 自身从不触发网络。自动模式下通常无需再手动 fetch，
+  手动刷新按钮仍可显式立即重试。网络超时/取消继续遵循上述排队限制。
+
+数组翻译本轮不提供。不同平台的原生资源与 UI 层保持各自实现。

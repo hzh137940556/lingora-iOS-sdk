@@ -168,3 +168,13 @@ SDK 发布与独立 Package 验收在单独 PR 中维护，不依赖此 Demo 工
 CI 不自动改写提交中的选择：若提交远端模式，其版本必须已经存在。fixture 使用真实 SDK 源码的
 临时 Git Tag，不需要翻译服务密钥，也不代表真实发布成功。
 Demo 手动验收与翻译同步在各自 Runner 检出中应用精确远端模式，不影响开发者本地配置。
+
+
+### iOS 上传兼容性与普通 PR 验证
+
+Demo 的 `make mock_ci` 在 push 前通过 `Demo/scripts/push_icu.py` 将受支持的原生资源转换为
+临时 ICU JSON，再调用固定 `lingora-cli.version`。复杂格式在远端写入前失败；不修改服务端或
+Android，不自动修复历史词条。业务 CI 模板使用同一脚本，详见 Demo README。
+普通 PR CI 额外执行 `Demo/tests/cli_icu_smoke.py`：真实固定 CLI 只连接 localhost 协议 fixture，
+使用合成凭据验证 multipart 上传、ZIP 下载和 validate，不读取 GitHub Secret，不写真实项目。
+SDK 的可选语言目录、默认 namespace 与自动加载测试使用隔离网络和缓存；Demo 仍锁定已发布版本。

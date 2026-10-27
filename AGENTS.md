@@ -17,6 +17,7 @@
 - 公共 API 保持 Tolgee 风格的 singleton、`initialize`、`remoteFetch`、`translate`、locale 切换和更新流。
 - 网络或无效远端数据不得清空最后有效翻译；缓存写入使用原子替换。
 - 可选 Bundle APPLE_SDK JSON 只能读取调用方 Bundle，按语言/namespace 隔离并复用文档校验；默认关闭，不影响 CLI、服务端或系统资源回退。
+- 默认 namespace 只影响 SDK 文档，不改变原生 Bundle table；语言匹配、目录和自动加载均显式开启，默认保留精确语言与手动 fetch。
 - swizzling 默认关闭，只接管普通字符串；plural fallback 继续交给系统资源。
 
 ## Demo 与 CLI 边界
@@ -33,6 +34,7 @@
 - 普通远端脚本构建必须使用匹配配置的 Package.resolved；切换版本后显式执行 `build_demo.py --resolve-only`。翻译 CI 在任何上传前完成 URL 校验和依赖解析。
 - fixture 是测试专用入口，使用同一配置逻辑在无 SDK 的隔离消费者验证两个渠道，file URL 仅测试可用，不修改当前工程选择。
 - Demo 公开 URL 由 build setting 写入 Info.plist；CI 必须显式注入，不能静默使用工程开发默认值。
+- iOS 原生源文件上传必须经 `push_icu.py` 转为可往返的 ICU JSON；复杂或歧义格式上传前失败，不改 CLI/服务端，不自动覆盖历史词条。
 - CLI 顺序固定为 validate/push/pull/validate/资源检查，即使 `make -j` 也必须串行，失败立即退出。
 - 真实翻译工作流仅在 develop 且 `LINGORA_TRANSLATIONS_ENABLED=true` 时运行，Secret 仅用于 CLI 步骤。
 - 普通 CI 可在公开 URL 变量非空时只读验收公开 CDN，使用固定发布 SDK 和无 Bundle 翻译的临时消费者；不传 Secret、不执行 CLI 写入，不放宽 develop 同步门禁。

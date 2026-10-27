@@ -55,6 +55,34 @@ actor ContentDeliveryStore {
         return result
     }
 
+    /// 获取可选目录；无效或离线响应只使用经过校验的最后有效缓存。
+    func languages(baseURL: URL, fileName: String, network: Bool) async -> [String]? {
+        let url = baseURL.appendingPathComponent(fileName)
+        await acquire(url)
+        defer { release(url) }
+        let file = cacheFile(for: url)
+        let entry = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode(CacheEntry.self, from: $0) }
+        let cached = entry.flatMap { try? LanguageManifest(data: $0.data) }
+        guard network, !Task.isCancelled else { return cached?.locales }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if cached != nil {
+            request.setValue(entry?.etag, forHTTPHeaderField: "If-None-Match")
+            request.setValue(entry?.lastModified, forHTTPHeaderField: "If-Modified-Since")
+        }
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard !Task.isCancelled, let http = response as? HTTPURLResponse else { return cached?.locales }
+            if http.statusCode == 304 { return cached?.locales }
+            guard http.statusCode == 200, let manifest = try? LanguageManifest(data: data) else { return cached?.locales }
+            let updated = CacheEntry(data: data, etag: http.value(forHTTPHeaderField: "ETag"),
+                                     lastModified: http.value(forHTTPHeaderField: "Last-Modified"))
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if let bytes = try? JSONEncoder().encode(updated) { try? bytes.write(to: file, options: .atomic) }
+            return manifest.locales
+        } catch { return cached?.locales }
+    }
+
     /// 同一 URL 顺序执行请求与缓存写入，不同 namespace 保持并行。
     private func acquire(_ url: URL) async {
         if waiters[url] == nil {

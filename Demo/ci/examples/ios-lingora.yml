@@ -67,7 +67,7 @@ jobs:
         run: |
           lingora --config "$LINGORA_CONFIG" validate --namespaces app --path "$APP_OUTPUT"
           lingora --config "$LINGORA_CONFIG" validate --namespaces common --path "$COMMON_OUTPUT"
-          lingora --config "$LINGORA_CONFIG" push
+          python3 ci/push_icu.py --config "$LINGORA_CONFIG" --version "$(tr -d '\r\n' < lingora-cli.version)"
           lingora --config "$LINGORA_CONFIG" pull --namespaces app --path "$APP_OUTPUT"
           lingora --config "$LINGORA_CONFIG" pull --namespaces common --path "$COMMON_OUTPUT"
           lingora --config "$LINGORA_CONFIG" validate --namespaces app --path "$APP_OUTPUT"

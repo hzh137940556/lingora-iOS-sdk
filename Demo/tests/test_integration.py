@@ -35,8 +35,13 @@ if os.environ.get("FAIL") in args:
 '''
         (binary / "uvx").write_text(stub)
         (binary / "uvx").chmod(0o755)
+        (root / "ci").mkdir()
+        shutil.copy(DEMO / "ci/lingora.dev.json", root / "ci/custom config.json")
+        for target in ("LingoraDemo", "LingoraCommon"):
+            shutil.copytree(DEMO / target / "Resources", root / target / "Resources")
         # 检查器命令同样记录，但资源语义由独立测试覆盖。
         (root / "scripts").mkdir()
+        shutil.copy(DEMO / "scripts/push_icu.py", root / "scripts/push_icu.py")
         (root / "scripts/check_resources.py").write_text(stub.split("\n", 1)[1])
         return subprocess.run(
             ["make", "-j8", "mock_ci", "LINGORA_CONFIG=ci/custom config.json"],
@@ -56,8 +61,12 @@ if os.environ.get("FAIL") in args:
                              ["validate", "validate", "push", "pull", "pull", "validate", "validate"])
             version = (DEMO / "lingora-cli.version").read_text().strip()
             for call in calls[:-1]:
-                self.assertEqual(call[:5], ["--from", f"lingora-cli=={version}", "lingora",
-                                           "--config", "ci/custom config.json"])
+                self.assertEqual(call[:4], ["--from", f"lingora-cli=={version}", "lingora", "--config"])
+                if call[5] == "push":
+                    self.assertNotEqual(call[4], "ci/custom config.json")
+                    self.assertFalse(Path(call[4]).exists())
+                else:
+                    self.assertEqual(call[4], "ci/custom config.json")
             self.assertIn("--app-output", calls[-1])
 
     # 任意上传或下载失败都不能继续执行后续步骤。

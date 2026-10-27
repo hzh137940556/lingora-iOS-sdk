@@ -91,6 +91,10 @@ jobs:
       - name: Verify SDK, release rules and Demo
         run: make verify
 
+      - uses: astral-sh/setup-uv@v6
+      - name: Verify pinned CLI ICU transport locally
+        run: python3 Demo/tests/cli_icu_smoke.py
+
       - name: Check diff whitespace
         run: git diff --check
 

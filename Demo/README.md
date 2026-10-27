@@ -121,10 +121,32 @@ JSON 都存在且结构有效，并检查构建产物中的内容完全一致。
 `bundledTranslationsDirectory: "Lingora"` 后直接读取 Bundle JSON，避开原生 `.strings`
 导出保留 ICU 参数的问题；CLI 和服务端均未修改。
 
-平台源文本仍须使用 ICU `{name}` 和 plural `#`，例如 `{count, plural, other {# 个项目}}`。
-导入时保留的原生 `%@` / `%lld` 可能被导出成 `%%@` / `%%lld`；此上传兼容问题不在本次 SDK
-扩展范围内。现有项目已使用正确 ICU，`KEEP` 保留现值；新增参数词条仍应核对平台内容。
-JSON 结构检查不等于完整的参数语义校验，运行时探针另行验证 Demo 的参数和复数词条。
+### 上传前 ICU 转换
+
+`make cli-push` / `make mock_ci` 调用 `scripts/push_icu.py`，先将配置的 `.strings` 与
+`.stringsdict` 按 namespace/language 合并成临时 JSON，再用固定 CLI 上传。临时配置保留
+KEEP、不删除远端 key 等策略，`convertPlaceholdersToIcu=false` 防止二次转换。
+不会改写原生资源、下载内容、CLI、服务端或 Android；普通 Xcode build 不运行转换。
+直接运行 `lingora push` 会绕过此步骤，iOS 原生源文件请使用上述 Make 入口。
+
+支持普通文本、单个 `%@` → `{arg1}`、单个 `%lld` → `{arg1, number}`，以及
+`.stringsdict` 的独立单变量 `lld` plural → 含 `#` 的标准复数 JSON map。
+允许 `%1$@` / `%1$lld`；带参数文本中的 `%%` 保留为字面百分号。
+当前 Apple 导出器不能保留多参数的索引、宽度/精度、浮点类型或复杂 plural 嵌套，
+因此这些输入在上传前失败；字面 ICU 花括号、plural 字面 `#` 和无参数百分号文本也拒绝，
+避免现有导出器错误转义。重复 key（同文件或跨文件）同样失败。
+这是一条保守、可验证的上传路径，并非完整 printf/ICU 编译器。
+
+只检查转换、不访问远端：
+
+```bash
+python3 scripts/push_icu.py --config ci/lingora.dev.json --version "$(cat lingora-cli.version)" --check
+```
+
+`KEEP` 不修复平台已有错误内容或覆盖已有非空英语；历史词条应在平台单独核对。
+JSON 结构检查不等于参数语义校验，运行时探针另行验证参数和复数。
+`python3 tests/cli_icu_smoke.py` 使用真实固定 CLI 和 localhost 协议 fixture 验证上传、下载和
+校验，使用合成凭据，不写真实项目；普通 PR CI 执行该测试。真实环境同步仍受 develop 门禁限制。
 
 从旧 `.strings/.stringsdict` 生成布局迁移时，将两个 target 的旧 `Generated/` 移到工程外备份，
 再执行同步。预检拒绝新旧布局混用；不要自动删除或改写已有生成文件来绕过错误。

@@ -10,7 +10,9 @@
    如果复制整个 Demo，先用 `make configure-sdk SDK_MODE=release SDK_VERSION=X.Y.Z` 应用配置，
    解析后提交 `sdk-source.json`、工程和锁文件；同时保留 `scripts/configure_sdk.py`，供 Xcode 构建期检查。
 2. 复制 Demo 的 `lingora-cli.version` 到仓库根目录，将 `scripts/check_resources.py` 复制到业务仓库
-   `ci/check_resources.py`。它只检查 Apple 资源，不是 CLI 实现副本。
+   `ci/check_resources.py`；将 `scripts/push_icu.py` 复制到 `ci/push_icu.py`。
+   后者在上传前将受支持的原生资源转成 ICU JSON，再调用固定 CLI；正常 Xcode 构建不调用它。
+   支持范围及明确拒绝的格式见 Demo README 的“上传前 ICU 转换”。
 3. 参考 `Demo/ci/lingora.dev.json` 创建 `ci/lingora.production.json`，替换真实业务项目、分支、基础资源
    和目标语言。不得直接使用 Demo 项目上传业务词条。配置不包含密钥。
 4. pull 使用 `apple-sdk`，布局为 `Lingora/{namespace}/{languageTag}.json`。
