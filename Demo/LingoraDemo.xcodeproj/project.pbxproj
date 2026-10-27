@@ -333,7 +333,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = LingoraDemo/Info.plist;
-				LINGORA_CONTENT_DELIVERY_URL = "https://cosly-dev.s3.us-west-2.amazonaws.com/lingora/localstrings/ios/v1";
+				LINGORA_CONTENT_DELIVERY_URL = "https://cosly-dev.s3.us-west-2.amazonaws.com/lingora/localstrings/ios-demo-ci/dev";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -356,7 +356,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = LingoraDemo/Info.plist;
-				LINGORA_CONTENT_DELIVERY_URL = "https://cosly-dev.s3.us-west-2.amazonaws.com/lingora/localstrings/ios/v1";
+				LINGORA_CONTENT_DELIVERY_URL = "https://cosly-dev.s3.us-west-2.amazonaws.com/lingora/localstrings/ios-demo-ci/dev";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

@@ -94,6 +94,24 @@ jobs:
       - name: Check diff whitespace
         run: git diff --check
 
+  delivery:
+    name: Published SDK runtime and CDN
+    if: vars.LINGORA_TRANSLATIONS_ENABLED == 'true'
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: Demo
+          persist-credentials: false
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4'
+      - name: Verify public CDN through the exact published SDK
+        env:
+          LINGORA_CONTENT_DELIVERY_URL: ${{ vars.LINGORA_CONTENT_DELIVERY_URL }}
+        run: python3 Demo/scripts/check_delivery.py
+
   publish:
     name: >-
       ${{ needs.verify.outputs.channel

@@ -121,7 +121,22 @@ API Key 由 CLI 读取环境变量；不进入 App。按项目约定提交无凭
 `%%lld`，此时 CLI 会报 `Placeholder mismatch` 并保留原输出。服务端 plural 应使用
 `{count, plural, other {# 个项目}}` 这样的 ICU 数量占位符；不要关闭校验或修改下载文件
 绕过错误。修正已有词条后，`KEEP` 会保留修正值，但新增 plural 仍需检查服务端内容。
+普通参数也应使用 ICU `{name}`（例如 `Hello, {name}!`）；否则 APPLE_SDK 可能把 `%@`
+导出为 `%%@`，导致运行时无法替换参数。现有测试项目已修正；服务端导入问题仍待修复。
 CLI 项目配置不等于 Content Delivery 发布配置，push/pull 不会自动更新运行时 CDN。
+
+本项目的 `iOS Demo Dev` Content Delivery 固定绑定 `develop`，格式为 `apple-sdk`，
+路径模板为 `{namespace}/{languageTag}.{extension}`，发布 TRANSLATED/REVIEWED 状态。
+公开前缀为 `https://cosly-dev.s3.us-west-2.amazonaws.com/lingora/localstrings/ios-demo-ci/dev`。
+当前采用手工发布，翻译修改后需在 Content Delivery 页面发布新快照。
+
+可显式执行以下只读验收（无需 API Key），使用固定发布 SDK 下载六个文档，并检查
+namespace、语言切换、字符串参数和复数；临时消费者不含 Bundle 翻译：
+
+```bash
+LINGORA_CONTENT_DELIVERY_URL=https://cosly-dev.s3.us-west-2.amazonaws.com/lingora/localstrings/ios-demo-ci/dev \
+  python3 scripts/check_delivery.py
+```
 
 ## 生成资源与环境地址
 

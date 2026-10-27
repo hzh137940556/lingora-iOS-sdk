@@ -145,7 +145,13 @@ SDK 发布与独立 Package 验收在单独 PR 中维护，不依赖此 Demo 工
 只检出 Demo，在上传前通过同一配置命令应用固定 dev 版本，不允许本地 SDK 源码兜底。API Key 仅用于同步步骤，不传给 Xcode。
 成功 push 不因后续失败回滚，KEEP 不覆盖已有非空值；CLI 同步不会自动发布 Content Delivery。
 
-工作流文件和文档不会修改 GitHub Settings，也不会自动创建平台翻译或 CDN 发布配置。
+当前仓库已配置上述 Secret/Variables，SDK 固定为 `0.1.0-dev.1`，CDN 指向
+`https://cosly-dev.s3.us-west-2.amazonaws.com/lingora/localstrings/ios-demo-ci/dev`。
+密钥仅包含词条创建/编辑/查看和翻译编辑/查看权限，不具备 CDN 发布权限。
+
+普通 CI 另有 `Published SDK runtime and CDN` Job，在启用变量为 `true` 时只读验收公开 CDN，
+不传 Secret、不执行 push/pull。PR 合并前可验证实际发布 SDK 的运行时加载；真实翻译同步仍
+仅限 develop，且必须等工作流合入后才能在 GitHub 执行。不要为预合并验收放宽分支门禁。
 首次验收需分别确认 Actions 步骤、产物内资源、模拟器运行与 CDN 内容；真机 IPA 沿用独立签名流程。
 业务仓库可复制 [消费项目 CI 模板](Demo/ci/examples/README.md)，无需使用本仓库的发布权限。
 
