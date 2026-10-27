@@ -52,8 +52,8 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		A00000000000000000000001 /* LingoraDemo/Generated */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = LingoraDemo/Generated; sourceTree = "<group>"; };
-		A00000000000000000000002 /* LingoraCommon */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = LingoraCommon; sourceTree = "<group>"; };
+		A00000000000000000000001 /* LingoraDemo/Generated */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (Lingora, ); path = LingoraDemo/Generated; sourceTree = "<group>"; };
+		A00000000000000000000002 /* LingoraCommon */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (Generated/Lingora, ); path = LingoraCommon; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -123,6 +123,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 700000000000000000000002 /* Build configuration list for PBXNativeTarget "LingoraDemo" */;
 			buildPhases = (
+				400000000000000000000008 /* Check SDK configuration */,
 				400000000000000000000002 /* Sources */,
 				400000000000000000000001 /* Frameworks */,
 				400000000000000000000007 /* Embed Frameworks */,
@@ -197,7 +198,7 @@
 			);
 			mainGroup = 500000000000000000000001;
 			packageReferences = (
-				800000000000000000000001 /* XCLocalSwiftPackageReference "../SDK" */,
+				800000000000000000000001 /* Lingora SDK */,
 			);
 			productRefGroup = 500000000000000000000005 /* Products */;
 			projectDirPath = "";
@@ -227,6 +228,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		400000000000000000000008 /* Check SDK configuration */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = (
+				"$(SRCROOT)/sdk-source.json",
+				"$(SRCROOT)/scripts/configure_sdk.py",
+				"$(PROJECT_FILE_PATH)/project.pbxproj",
+			);
+			name = "Check SDK configuration";
+			outputPaths = ();
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "PYTHONDONTWRITEBYTECODE=1 python3 \"$SRCROOT/scripts/configure_sdk.py\" --check\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		400000000000000000000002 /* Sources */ = {
@@ -313,6 +333,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = LingoraDemo/Info.plist;
+				LINGORA_CONTENT_DELIVERY_URL = "https://cosly-dev.s3.us-west-2.amazonaws.com/lingora/localstrings/ios-demo-ci/dev";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -335,6 +356,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = LingoraDemo/Info.plist;
+				LINGORA_CONTENT_DELIVERY_URL = "https://cosly-dev.s3.us-west-2.amazonaws.com/lingora/localstrings/ios-demo-ci/dev";
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -434,17 +456,21 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		800000000000000000000001 /* XCLocalSwiftPackageReference "../SDK" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../SDK;
+/* Begin XCRemoteSwiftPackageReference section */
+		800000000000000000000001 /* Lingora SDK */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/hzh137940556/lingora-iOS-sdk.git";
+			requirement = {
+				kind = exactVersion;
+				version = "0.1.0-dev.2";
+			};
 		};
-/* End XCLocalSwiftPackageReference section */
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		900000000000000000000001 /* Lingora */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 800000000000000000000001 /* XCLocalSwiftPackageReference "../SDK" */;
+			package = 800000000000000000000001 /* Lingora SDK */;
 			productName = Lingora;
 		};
 /* End XCSwiftPackageProductDependency section */

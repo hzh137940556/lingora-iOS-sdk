@@ -44,7 +44,18 @@ expected = {("Lingora", "library"), ("LingoraTests", "test")}
 if targets != expected:
     raise SystemExit(f"Package targets must be exactly {sorted(expected)}; got {sorted(targets)}")
 '
-xcodebuild -project "$root/Demo/LingoraDemo.xcodeproj" -list -json \
+python3 "$root/Demo/scripts/configure_sdk.py" --check
+# Xcode 的 -list 也会解析依赖，必须在它之前检查锁文件，避免 CI 静默修复陈旧锁。
+python3 - "$root/Demo" <<'PY'
+from pathlib import Path
+import sys
+demo = Path(sys.argv[1])
+sys.path.insert(0, str(demo / "scripts"))
+from configure_sdk import configure
+from build_demo import check_resolution
+check_resolution(demo, configure(demo, check=True))
+PY
+xcodebuild -project "$root/Demo/LingoraDemo.xcodeproj" -list -json -onlyUsePackageVersionsFromResolvedFile \
   | python3 -c '
 import json
 import sys
@@ -54,6 +65,5 @@ expected = {"LingoraDemo", "LingoraCommon"}
 if targets != expected:
     raise SystemExit(f"Demo project targets must be {sorted(expected)}; got {sorted(targets)}")
 '
-grep -q 'XCLocalSwiftPackageReference "../SDK"' "$root/Demo/LingoraDemo.xcodeproj/project.pbxproj"
 grep -q 'productName = Lingora' "$root/Demo/LingoraDemo.xcodeproj/project.pbxproj"
 grep -q 'productType = "com.apple.product-type.framework"' "$root/Demo/LingoraDemo.xcodeproj/project.pbxproj"

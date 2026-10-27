@@ -1,0 +1,15 @@
+{
+  "originHash" : "90303e1da348050c1ec36c11e5b749f1a4b0e26c6bec604e684aecaed7c68914",
+  "pins" : [
+    {
+      "identity" : "lingora-ios-sdk",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hzh137940556/lingora-iOS-sdk.git",
+      "state" : {
+        "revision" : "04e9d779b7bafca0c7e48854c0cc946589e927e4",
+        "version" : "0.1.0-dev.2"
+      }
+    }
+  ],
+  "version" : 3
+}

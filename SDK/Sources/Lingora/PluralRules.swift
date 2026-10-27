@@ -5,7 +5,7 @@ import Foundation
 enum PluralRules {
     /// 根据 locale、整数、负数和小数返回远端 plural key。
     static func category(for number: Double, locale: Locale) -> String {
-        guard number >= 0 else { return "other" }
+        guard number.isFinite, number >= 0, number < Double(Int.max) else { return "other" }
         let language = locale.language.languageCode?.identifier
             ?? locale.identifier.split(whereSeparator: { $0 == "-" || $0 == "_" }).first.map(String.init)
             ?? "en"
