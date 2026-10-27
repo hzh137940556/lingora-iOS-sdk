@@ -31,7 +31,9 @@ enum SafeFormatter {
             }
             if let positional, positional != explicit { return nil }
             positional = explicit
+            let flagStart = cursor
             while cursor < characters.count && "-+ #0".contains(characters[cursor]) { cursor += 1 }
+            let flags = characters[flagStart..<cursor]
             for part in 0..<2 {
                 if part == 1 {
                     guard cursor < characters.count && characters[cursor] == "." else { break }
@@ -50,6 +52,8 @@ enum SafeFormatter {
             guard cursor < characters.count, index < arguments.count else { return nil }
             let conversion = characters[cursor]
             cursor += 1
+            // 原生 stringsdict 的 %#@variable@ 只能来自系统资源，不能来自外部 JSON。
+            if conversion == "@", flags.contains(where: { $0 != "-" }) { return nil }
             guard accepts(arguments[index], conversion: conversion, length: length) else { return nil }
             used.insert(index)
         }

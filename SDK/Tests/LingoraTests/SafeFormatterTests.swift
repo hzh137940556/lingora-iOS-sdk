@@ -23,7 +23,7 @@ final class SafeFormatterTests: XCTestCase {
         let cases: [(String, [CVarArg])] = [
             ("%@ %@", ["one"]), ("%@", [Int64(1)]), ("%lld", ["text"]),
             ("%f", [Int64(1)]), ("%2$@", ["one"]), ("%2$@", [1.5, "two"]), ("%0$@", ["one"]),
-            ("%n", [Int64(0)]), ("%s", ["text"]), ("%p", [Int64(0)]),
+            ("%#@count@", ["value"]), ("%n", [Int64(0)]), ("%s", ["text"]), ("%p", [Int64(0)]),
             ("%*d", [Int32(2), Int32(3)]), ("%1$@ %@", ["a", "b"]),
             ("%999999999@", ["a"]), ("%@ trailing %", ["a"]),
             ("%d", [Int.max]), ("%L@", ["a"]),
