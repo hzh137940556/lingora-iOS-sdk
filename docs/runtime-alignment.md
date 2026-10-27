@@ -1,6 +1,6 @@
 # 运行时对齐待决项
 
-本轮只修改消费接入、CLI 和 CI，不改变 SDK 运行时协议或 Demo UI。
+本轮覆盖消费接入、CLI、CI 和 SDK 可靠性修复，不改变 SDK 运行时协议或 Demo UI。
 
 | 待决项 | 当前 iOS 行为 | 后续需确定 |
 | --- | --- | --- |
@@ -10,8 +10,11 @@
 | 默认 namespace | 未传 table 时查询根文档 | 是否增加默认 table，以及对现有调用的影响 |
 | 数组翻译 | 普通字符串与 plural | 是否存在 iOS 产品需求、Apple Delivery 数据形状及 Bundle fallback 表达 |
 
-可独立安排的后续可靠性工作：公开加载状态与失败原因、同 language/table 请求合并、
-同语言并发刷新顺序保护、失败冷却、格式化参数校验，以及 plural 边界测试。
-这些不要求先引入 manifest，但应单独设计 API 和回归测试，避免与接入配置改动混合。
+SDK 源码已补齐公开加载状态与失败 namespace、同 URL 请求串行化、同语言刷新顺序保护、
+可选失败冷却、外部 JSON 格式化参数校验、plural 数值边界保护和对应回归测试。
+JSON/framework 独有语言不再要求主 Bundle 存在对应 lproj。默认 remoteFetch 仍立即重试，
+只有显式传入 forceRefresh: false 才启用失败冷却；请求串行化不等于请求合并。
+具体 API 和取消语义见 SDK/README.md。上述源码修复尚未发布，Demo 仍固定消费已发布的
+0.1.0-dev.2，不会自动使用当前 SDK 源码；验证源码需使用 SDK 测试或显式选择 local。
 
 SwiftUI、Bundle 和 `.stringsdict` 保留平台实现，不照搬 Android 的 Compose、资源 ID 或 Maven 发布方式。
