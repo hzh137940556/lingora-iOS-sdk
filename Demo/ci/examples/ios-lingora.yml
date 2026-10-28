@@ -51,7 +51,7 @@ jobs:
           [[ "$latest_sha" == "$GITHUB_SHA" ]] || { echo 'Outdated source; run the latest commit.'; exit 1; }
       # 使用包含该 Action 的已审阅开发仓库 commit SHA；SDK package-only Tag 不含 Action。
       - name: Sync configured namespaces
-        uses: hzh137940556/lingora-iOS-sdk/.github/actions/ios-translations@REPLACE_WITH_REVIEWED_COMMIT_SHA
+        uses: hzh137940556/lingora-iOS-sdk/.github/actions/ios-translations@f710ca68cc72ef58da745d1d852c4c988a3ae03a
         with:
           config: ${{ env.LINGORA_CONFIG }}
           resources: ${{ env.LINGORA_RESOURCES }}
@@ -67,7 +67,7 @@ jobs:
           echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
           ditto -c -k --sequesterRsrc --keepParent "$app" "$RUNNER_TEMP/ios-simulator.zip"
       - name: Verify packaged namespace resources
-        uses: hzh137940556/lingora-iOS-sdk/.github/actions/ios-translations@REPLACE_WITH_REVIEWED_COMMIT_SHA
+        uses: hzh137940556/lingora-iOS-sdk/.github/actions/ios-translations@f710ca68cc72ef58da745d1d852c4c988a3ae03a
         with:
           config: ${{ env.LINGORA_CONFIG }}
           resources: ${{ env.LINGORA_RESOURCES }}

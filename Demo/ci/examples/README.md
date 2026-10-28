@@ -6,8 +6,8 @@ SDK 本身只需要 Swift Package 和公开 Content Delivery URL。需要上传�
 ## 一次性接入
 
 1. 按 SDK README 添加实际已发布的精确版本，关联 App/framework target，提交 `Package.resolved`。
-2. 将 `ios-lingora.yml` 放进 `.github/workflows/`。把两处 `REPLACE_WITH_REVIEWED_COMMIT_SHA` 替换为
-   **包含该 Action 的、已审阅的开发仓库完整 commit SHA**。该工具随源码提交交付；SDK SemVer Tag
+2. 将 `ios-lingora.yml` 放进 `.github/workflows/`。模板的两处 Action 引用已固定到
+   **经过验证、可从远端获取的开发仓库完整 commit SHA**。该工具随源码提交交付；SDK SemVer Tag
    是 package-only 快照，不含 Action，不能拿 `0.1.0-dev.3` 等 SDK Tag 作为工具版本。
 3. 准备以下三个配置文件，不复制或编辑 Python 工具源码：
    - `lingora-cli.version`：固定公开 CLI 版本，例如 `0.1.0rc4`。
@@ -23,8 +23,8 @@ SDK 本身只需要 Swift Package 和公开 Content Delivery URL。需要上传�
 5. App 从 build setting / Info.plist 读取公开 Delivery URL 并传给 SDK；参考 Demo 实现。
    在 GitHub 配置 `LINGORA_CONTENT_DELIVERY_URL` Variable 和 `LINGORA_API_KEY` Secret，后者只放同步步骤。
 
-当前新增工具需先进入可获取的 Git 提交，再填写该提交 SHA。SDK 版本和工具提交分别固定，
-升级工具只更新两处 SHA，不需要复制修复代码。许可证尚未确定，本流程不代替项目开源授权。
+模板当前固定工具提交 `f710ca68cc72ef58da745d1d852c4c988a3ae03a`。SDK 版本和工具提交分别固定，
+升级工具时审阅目标提交并同步更新两处 SHA，不需要复制修复代码。许可证尚未确定，本流程不代替项目开源授权。
 
 ## 本地使用同一工具
 
