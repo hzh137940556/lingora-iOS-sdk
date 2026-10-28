@@ -7,12 +7,12 @@ Demo 保持现有 SwiftUI 页面，通过公开 `Lingora` product 展示 `app` �
 
 `sdk-source.json` 是 SDK 来源配置，`make configure-sdk` 将它写入**实际**的
 `LingoraDemo.xcodeproj/project.pbxproj`。切换后日常 Xcode 打开的同一工程直接使用所选来源，
-构建脚本与 IDE 使用同一依赖。当前默认 dev，固定已发布远端版本 [`0.1.0-dev.2`](https://github.com/hzh137940556/lingora-iOS-sdk/releases/tag/0.1.0-dev.2)。
+构建脚本与 IDE 使用同一依赖。当前默认 dev，固定已发布远端版本 [`0.1.0-dev.3`](https://github.com/hzh137940556/lingora-iOS-sdk/releases/tag/0.1.0-dev.3)。
 
 ```json
 {
   "mode": "dev",
-  "version": "0.1.0-dev.2",
+  "version": "0.1.0-dev.3",
   "repositoryURL": "https://github.com/hzh137940556/lingora-iOS-sdk.git",
   "localPath": "../SDK"
 }
@@ -117,7 +117,7 @@ JSON 都存在且结构有效，并检查构建产物中的内容完全一致。
 该门槛不代表所有 key 均已翻译。`KEEP` 不覆盖远端已有非空英语，push 不执行自动翻译或发布 CDN；
 成功上传不会在后续构建失败时回滚。
 
-下载使用既有 CLI 的 `apple-sdk` JSON，SDK `0.1.0-dev.2` 开启
+下载使用既有 CLI 的 `apple-sdk` JSON，SDK `0.1.0-dev.3` 开启
 `bundledTranslationsDirectory: "Lingora"` 后直接读取 Bundle JSON，避开原生 `.strings`
 导出保留 ICU 参数的问题；CLI 和服务端均未修改。
 

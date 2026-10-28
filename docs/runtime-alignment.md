@@ -1,8 +1,8 @@
 # Android / iOS 对齐范围
 
-本轮所有修改留在 PR #2，服务端、Android 与 Demo UI 不变。
-PR 包含 `0.1.0-dev.3` 的版本请求：合入 develop 后经完整验证和环境审批发布，本轮不执行合并或发布。
-Demo 仍固定消费 `0.1.0-dev.2`；新增 API 的源码测试不代表该已发布版本包含这些接口。
+SDK 对齐改动已通过 PR #2 合入，并发布为 `0.1.0-dev.3`。
+Demo 当前固定消费该已发布版本，Xcode 配置、Package.resolved 和翻译 CI 版本同步更新；
+服务端、Android 与 Demo UI 保持不变。
 
 | Android 实际实现 | iOS 对应实现 | 必要差异 |
 | --- | --- | --- |

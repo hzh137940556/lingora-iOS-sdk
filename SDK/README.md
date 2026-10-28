@@ -24,7 +24,7 @@ Lingora 的 iOS 运行时 SDK，负责读取 `APPLE_SDK` Content Delivery、缓�
 ```swift
 .package(
     url: "https://github.com/hzh137940556/lingora-iOS-sdk.git",
-    exact: "0.1.0-dev.2"
+    exact: "0.1.0-dev.3"
 )
 ```
 
@@ -145,7 +145,7 @@ Bundle 是不可变资源，SDK 按 Bundle 路径缓存解析及缺失结果，`
 
 ## 运行时可靠性与状态
 
-本节新增 API 位于当前源码，尚未包含在已发布的 `0.1.0-dev.2`。
+本节 API 已包含在 `0.1.0-dev.3`。
 
 `remoteFetch()` 对应 Android `refresh()`，每次主动检查远端。`preload()` 对应 Android 的同名方法：
 多个消费者共享一次加载，已加载的 namespace 不重复请求；失败冷却 5 秒，主动 remoteFetch 可立即重试。
@@ -181,7 +181,7 @@ SwiftUI 的更新监听与加载独立执行，恢复的缓存和语言变化通
 
 ## 与 Android 对齐的接入方式
 
-本节新增 API 位于 PR 源码；Demo 的已发布依赖仍为 `0.1.0-dev.2`，本轮不发布版本。
+本节 API 已包含在 `0.1.0-dev.3`，Demo 固定消费该已发布版本。
 
 ```swift
 Lingora.shared.initialize(
