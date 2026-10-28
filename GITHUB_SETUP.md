@@ -57,7 +57,7 @@ Demo、CLI 或仓库脚本。
 
 ## 5. 发布预发布与稳定版本
 
-`sdk-dev.version` 声明待发布的开发版本，当前为 `0.1.0-dev.3`（待发布）。包含该文件变更的 PR 合入 develop 后，
+`sdk-dev.version` 声明待发布的开发版本，当前为 `0.1.0-dev.3`（已发布）。包含该文件变更的 PR 合入 develop 后，
 push CI 自动提出发布请求、完成验证并等待 `ios-sdk-dev` 环境审批；批准后创建远端版本并验证消费。
 普通 PR 检查不发布，版本文件未变的后续 push 不重复发布；下一次自动发版需在 PR 中递增该文件。
 稳定版继续由 main 手动发起。不得移动既有 Tag，也不得同时为同一版本重复发起发布。
@@ -90,7 +90,7 @@ snapshot 的父提交和目录树都对应已验证 source SHA，只重试原 pu
 
 发布 PR 合入 develop 后，经既有环境审批和发布验收成功，`0.1.0-dev.3` 即可通过远端精确版本消费。
 无需等待 Demo 接入改动合入，也不需要再手动 dispatch 首次发布；不得手工创建 Tag。
-Demo 仍固定使用 `0.1.0-dev.2`；切换到新版本由后续独立修改完成，不随 SDK 发布自动升级。合并完成不等于发布完成，审批或发布失败时版本仍不可用。
+Demo 当前固定使用 `0.1.0-dev.3`；后续升级仍需显式修改配置和依赖锁，不随 SDK 发布自动升级。合并完成不等于发布完成，审批或发布失败时版本仍不可用。
 
 `make package-test` 验证当前 SDK 的临时 dev/release 版本，不创建真实 Tag。
 发布后的自动验收不检出 SDK 或 Demo，不允许源码回退。可在 Actions 手动运行
@@ -112,7 +112,7 @@ Demo 仍固定使用 `0.1.0-dev.2`；切换到新版本由后续独立修改完�
 ```swift
 .package(
     url: "https://github.com/hzh137940556/lingora-iOS-sdk.git",
-    exact: "0.1.0-dev.2"
+    exact: "0.1.0-dev.3"
 )
 ```
 
@@ -134,7 +134,7 @@ SDK 发布与独立 Package 验收在单独 PR 中维护，不依赖此 Demo 工
 | --- | --- | --- |
 | Secret | `LINGORA_API_KEY` | 该项目和分支的上传/下载密钥 |
 | Variable | `LINGORA_CONTENT_DELIVERY_URL` | 对应 APPLE_SDK 的公开 URL，不能为空 |
-| Variable | `LINGORA_IOS_SDK_VERSION` | 实际已发布的固定 dev 版本 `X.Y.Z-dev.N` |
+| Variable | `LINGORA_IOS_SDK_VERSION` | 实际已发布的固定 dev 版本，当前为 `0.1.0-dev.3`（与 Demo 配置同步） |
 | Variable | `LINGORA_TRANSLATIONS_ENABLED` | 配置完成后设置 `true`，允许真实同步 |
 
 未启用时同步 Job 跳过，普通 PR 与 `make verify` 始终不写翻译服务。工作流进入默认分支后才能
@@ -145,7 +145,7 @@ SDK 发布与独立 Package 验收在单独 PR 中维护，不依赖此 Demo 工
 只检出 Demo，在上传前通过同一配置命令应用固定 dev 版本，不允许本地 SDK 源码兜底。API Key 仅用于同步步骤，不传给 Xcode。
 成功 push 不因后续失败回滚，KEEP 不覆盖已有非空值；CLI 同步不会自动发布 Content Delivery。
 
-当前配置使用既有 CLI 的 `apple-sdk` JSON 下载，SDK `0.1.0-dev.2` 读取 Bundle JSON，
+当前配置使用既有 CLI 的 `apple-sdk` JSON 下载，SDK `0.1.0-dev.3` 读取 Bundle JSON，
 避开原生 `.strings` 导出的 ICU 参数兼容问题。本地真实同步、打包及离线/在线运行时验证通过后
 可启用 `LINGORA_TRANSLATIONS_ENABLED=true`；PR 未合并期间不会执行 develop 自动同步。CDN 指向
 `https://cosly-dev.s3.us-west-2.amazonaws.com/lingora/localstrings/ios-demo-ci/dev`。

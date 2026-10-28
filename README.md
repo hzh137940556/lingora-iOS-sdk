@@ -16,7 +16,7 @@ scripts/                     仓库边界和发布脚本，不进入 Package
 Demo 通过 `Demo/sdk-source.json` 选择 local/dev/release，并由配置命令更新实际 Xcode 工程。
 local 引用 `../SDK`，dev/release 引用远端精确版本；两者都只链接公开 `Lingora` product，不回退源码。
 切换示例：`make demo-configure SDK_MODE=dev SDK_VERSION=X.Y.Z-dev.N`，随后重新打开 Demo 工程。
-当前默认 dev，固定远端版本 `0.1.0-dev.2`；日常 Xcode 与命令行构建使用同一配置，解析失败不会回退本地源码。
+当前默认 dev，固定远端版本 `0.1.0-dev.3`；日常 Xcode 与命令行构建使用同一配置，解析失败不会回退本地源码。
 
 SDK 的安装与公开 API 说明见 [SDK/README.md](SDK/README.md)。
 本地/远端 Package 消费、CLI 命令和资源打包见 [Demo 接入指南](Demo/README.md)。
@@ -80,8 +80,8 @@ make publish-dev VERSION=0.1.0-dev.3  # develop
 make publish VERSION=0.1.0            # main
 ```
 
-当前 `sdk-dev.version` 请求发布 `0.1.0-dev.3`，变更合入 develop 后自动申请 dev 发布，等待环境审批；
-版本文件未变时不重复发版。Demo 仍固定 `0.1.0-dev.2`，发布不会自动升级 Demo。
+当前 `sdk-dev.version` 为已发布的 `0.1.0-dev.3`；后续版本号变更合入 develop 后自动申请 dev 发布，等待环境审批；
+版本文件未变时不重复发版。Demo 仍固定 `0.1.0-dev.3`，发布不会自动升级 Demo。
 上述命令仍可手动请求发布，稳定版继续从 main 发起。
 
 审批后的 CI 会从已验证 source commit 的 `SDK/` 子树创建 package-only snapshot commit，再创建不可移动

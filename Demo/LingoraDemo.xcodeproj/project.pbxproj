@@ -462,7 +462,7 @@
 			repositoryURL = "https://github.com/hzh137940556/lingora-iOS-sdk.git";
 			requirement = {
 				kind = exactVersion;
-				version = "0.1.0-dev.2";
+				version = "0.1.0-dev.3";
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
