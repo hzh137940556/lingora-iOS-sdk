@@ -123,25 +123,33 @@ JSON 都存在且结构有效，并检查构建产物中的内容完全一致。
 
 ### 上传前 ICU 转换
 
-`make cli-push` / `make mock_ci` 调用 `scripts/push_icu.py`，先将配置的 `.strings` 与
-`.stringsdict` 按 namespace/language 合并成临时 JSON，再用固定 CLI 上传。临时配置保留
+`make cli-push` / `make mock_ci` 调用 `scripts/push_icu.py`，先将配置的 `.strings`、`.stringsdict` 与 `.xcstrings` 按 namespace/language 合并成临时 JSON，再用固定 CLI 上传。临时配置保留
 KEEP、不删除远端 key 等策略，`convertPlaceholdersToIcu=false` 防止二次转换。
 不会改写原生资源、下载内容、CLI、服务端或 Android；普通 Xcode build 不运行转换。
 直接运行 `lingora push` 会绕过此步骤，iOS 原生源文件请使用上述 Make 入口。
 
-支持普通文本、单个 `%@` → `{arg1}`、单个 `%lld` → `{arg1, number}`，以及
-`.stringsdict` 的独立单变量 `lld` plural → 含 `#` 的标准复数 JSON map。
-允许 `%1$@` / `%1$lld`；带参数文本中的 `%%` 保留为字面百分号。
+支持普通文本、单个 `%@` → `{arg1}`、单个 signed `%d` / `%ld` / `%lld` → `{arg1, number}`，以及
+`.stringsdict` 的独立单变量 `d` / `ld` / `lld` plural → 含 `#` 的标准复数 JSON map。
+允许显式位置 `1$`；带参数文本中的 `%%` 保留为字面百分号。
+Apple 导出统一为 `%lld`；Swift Int/Int64 可直接消费，小整数 Int8/Int16/Int32 需本次尚未发布的 SDK 提升修复。
+
+`.xcstrings` 支持 1.0 catalog 的源 stringUnit 和独立 plural variation，`sourceLanguage` 必须与配置的
+push language 一致。缺省源 stringUnit 时使用 key；`shouldTranslate: false` 不上传，其他语言不作为源文案。
+不支持 device/substitutions 或混合变体，避免平铺丢失语义。
 当前 Apple 导出器不能保留多参数的索引、宽度/精度、浮点类型或复杂 plural 嵌套，
 因此这些输入在上传前失败；字面 ICU 花括号、plural 字面 `#` 和无参数百分号文本也拒绝，
 避免现有导出器错误转义。重复 key（同文件或跨文件）同样失败。
 这是一条保守、可验证的上传路径，并非完整 printf/ICU 编译器。
 
-只检查转换、不访问远端：
+本地一次检查全部可解析词条和文件级错误，不要求 API Key、uv 或 CLI 版本，也不访问远端：
 
 ```bash
-python3 scripts/push_icu.py --config ci/lingora.dev.json --version "$(cat lingora-cli.version)" --check
+python3 scripts/push_icu.py --config ci/lingora.dev.json --check
+# 自动化读取完整的 file/key/namespace/language/message 诊断；有问题时退出码为 1。
+python3 scripts/push_icu.py --config ci/lingora.dev.json --check --report-json
 ```
+
+检查器不会修改源文件；只要存在一个兼容性错误，push 和通用 Action 都不会上传部分成功结果。
 
 `KEEP` 不修复平台已有错误内容或覆盖已有非空英语；历史词条应在平台单独核对。
 JSON 结构检查不等于参数语义校验，运行时探针另行验证参数和复数。

@@ -230,3 +230,26 @@ await Lingora.shared.preload() // 类似 Android 页面启动时的 preload
 规则维护方式：开发仓库 `scripts/cldr/plurals.xml` 固定源数据，运行
 `python3 scripts/generate_plural_rules.py` 更新规则和官方样例测试；`make sdk-test` 检查生成物一致性。
 运行时不联网下载规则，也不依赖第三方库。许可见 THIRD_PARTY_NOTICES.md。
+
+### 后续兼容性修复（同样尚未发布）
+
+- 远端、磁盘缓存和 Bundle JSON 的复数按实际命中的文档语言选择；显式 `language` 与设备 locale 不同也正确。
+  数字参数继续沿用格式化 locale，不把翻译语言与数字显示偏好混为一谈。
+- 新的默认文本消费者会调用 preload；共享订阅不再抑制失败冷却后的重试，已加载内容仍复用。
+- `initialize(contentDeliveryURL: nil, ...)`（或省略 URL）启用纯离线模式：只读 Bundle JSON / 原生资源，
+  preload、remoteFetch、语言切换和 clearCache 不发送请求，也不从其他 CDN 项目的缓存恢复文档。
+  初始化配置仍不可变；需要远端加载的 App 应在首次初始化时传真实 URL。
+- Apple 导出将 signed `%d` / `%ld` / `%lld` 统一为 `%lld`；SDK 会安全提升 Int8/Int16/Int32 参数后格式化。
+  新上传工具的这些整数格式使用 Swift Int/Int64 时也兼容旧 SDK；使用 Int32 等小整数需等待本次 SDK 修复发布。
+
+纯离线初始化示例（当前源码 API）：
+
+```swift
+Lingora.shared.initialize(
+    locale: .current,
+    bundledTranslationsDirectory: "Lingora",
+    defaultNamespace: "app"
+)
+```
+
+原来的远端初始化调用不需要修改。已发布的 `0.1.0-dev.3` 仍要求 URL，不能直接省略该参数。

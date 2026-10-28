@@ -11,6 +11,7 @@ enum SafeFormatter {
         var next = 0
         var positional: Bool?
         var used = Set<Int>()
+        var renderedArguments = arguments
         while cursor < characters.count {
             guard characters[cursor] == "%" else { cursor += 1; continue }
             cursor += 1
@@ -55,12 +56,21 @@ enum SafeFormatter {
             // 原生 stringsdict 的 %#@variable@ 只能来自系统资源，不能来自外部 JSON。
             if conversion == "@", flags.contains(where: { $0 != "-" }) { return nil }
             guard accepts(arguments[index], conversion: conversion, length: length) else { return nil }
+            // Apple 导出统一使用 lld；显式提升小整数，避免依赖不匹配的 varargs ABI。
+            if "di".contains(conversion), ["l", "ll", "q", "z", "j", "t"].contains(length) {
+                switch arguments[index] {
+                case let value as Int8: renderedArguments[index] = Int64(value)
+                case let value as Int16: renderedArguments[index] = Int64(value)
+                case let value as Int32: renderedArguments[index] = Int64(value)
+                default: break
+                }
+            }
             used.insert(index)
         }
         // 译文（尤其 plural 的 one）可以不使用全部参数；额外参数不产生读取。
         // 显式位置不能跳号，否则 Foundation 无法可靠推断被跳过参数的 ABI。
         if positional == true, let maximum = used.max(), used != Set(0...maximum) { return nil }
-        return String(format: template, locale: locale, arguments: arguments)
+        return String(format: template, locale: locale, arguments: renderedArguments)
     }
 
     /// 按实际 CVarArg 类型检查 ABI，避免把整数当对象或把对象当指针读取。
@@ -76,6 +86,7 @@ enum SafeFormatter {
         if conversion == "c" && !length.isEmpty { return false }
         let wide = ["l", "ll", "q", "z", "j", "t"].contains(length)
         if wide {
+            if "di".contains(conversion), [Int8.self, Int16.self, Int32.self].contains(where: { $0 == type }) { return true }
             return type == Int.self || type == UInt.self || type == Int64.self || type == UInt64.self
         }
         if type == Int8.self || type == UInt8.self || type == Int16.self || type == UInt16.self

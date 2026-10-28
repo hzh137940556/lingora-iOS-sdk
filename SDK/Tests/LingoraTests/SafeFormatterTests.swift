@@ -18,6 +18,16 @@ final class SafeFormatterTests: XCTestCase {
         XCTAssertEqual(SafeFormatter.render("%@", arguments: ["used", "unused"], locale: locale), "used")
     }
 
+    /// 兼容服务端统一 lld 的整数导出，先提升再进入 C varargs。
+    func testPromotesSignedIntegersForAppleExport() {
+        let locale = Locale(identifier: "en-US")
+        for value: CVarArg in [Int8(-3), Int16(-3), Int32(-3)] {
+            XCTAssertEqual(SafeFormatter.render("%lld items", arguments: [value], locale: locale), "-3 items")
+        }
+        XCTAssertEqual(SafeFormatter.render("%1$d / %1$lld", arguments: [Int32(-3)], locale: locale), "-3 / -3")
+        XCTAssertNil(SafeFormatter.render("%lld", arguments: [UInt32.max], locale: locale))
+    }
+
     /// 拒绝参数数量、类型、索引、指针、混用位置和超大宽度，避免越界读取或分配。
     func testRejectsUnsafeFormats() {
         let cases: [(String, [CVarArg])] = [

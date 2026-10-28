@@ -13,7 +13,7 @@ import threading
 import zipfile
 
 DEMO = Path(__file__).resolve().parents[1]
-EXPECTED = {"welcome_name": "Hello, %@!", "items_count": {"variations": {"plural": {"one": "%lld item", "other": "%lld items"}}}}
+EXPECTED = {"legacy_count": "%lld files", "catalog_hello": "Catalog %@", "catalog_items": {"variations": {"plural": {"one": "%lld catalog item", "other": "%lld catalog items"}}}, "welcome_name": "Hello, %@!", "items_count": {"variations": {"plural": {"one": "%lld item", "other": "%lld items"}}}}
 
 
 # 协议 fixture 校验 CLI 的真实 multipart 请求，导出响应使用已核对的服务端格式。
@@ -54,6 +54,9 @@ class Handler(BaseHTTPRequestHandler):
                 mapping = params["fileMappings"][0]
                 assert mapping["namespace"] == "app" and mapping["languageTag"] == "en-US"
                 values = json.loads(next(p.get_payload(decode=True) for p in parts if p.get_filename()))
+                assert values["legacy_count"] == "{arg1, number} files"
+                assert values["catalog_hello"] == "Catalog {arg1}"
+                assert values["catalog_items"] == {"one": "# catalog item", "other": "# catalog items"}
                 assert values["welcome_name"] == "Hello, {arg1}!"
                 assert values["items_count"] == {"one": "# item", "other": "# items"}
                 Handler.imported = True
@@ -90,6 +93,18 @@ def main():
             config["apiUrl"] = f"http://127.0.0.1:{server.server_port}"
             config["projectId"] = "00000000-0000-0000-0000-000000000001"
             config["push"]["files"] = [dict(item, path=str((DEMO / "ci" / item["path"]).resolve())) for item in config["push"]["files"] if item["namespace"] == "app"]
+            legacy = root / "Legacy.strings"
+            legacy.write_text('"legacy_count" = "%d files";')
+            catalog = root / "Localizable.xcstrings"
+            catalog.write_text(json.dumps({"version": "1.0", "sourceLanguage": "en-US", "strings": {
+                "catalog_hello": {"localizations": {"en-US": {"stringUnit": {"value": "Catalog %@"}}}},
+                "catalog_items": {"localizations": {"en-US": {"variations": {"plural": {
+                    "one": {"stringUnit": {"value": "%d catalog item"}},
+                    "other": {"stringUnit": {"value": "%d catalog items"}}
+                }}}}}
+            }}))
+            config["push"]["files"] += [{"path": str(source), "namespace": "app", "language": "en-US"}
+                                         for source in (legacy, catalog)]
             config["pull"].update(path=str(root / "output"), languages=["ja"], namespaces=["app"])
             path = root / "config.json"
             path.write_text(json.dumps(config))

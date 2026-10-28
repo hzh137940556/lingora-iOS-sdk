@@ -18,7 +18,6 @@ final class BundledTranslationStore {
         directory: String,
         language: String,
         table: String?,
-        locale: Locale,
         arguments: [CVarArg]
     ) -> String? {
         guard let root = bundle.resourceURL,
@@ -52,7 +51,7 @@ final class BundledTranslationStore {
             if case .document(let document) = entries[url],
                let template = document.template(
                    for: key,
-                   locale: candidate == language ? locale : Locale(identifier: candidate),
+                   locale: Locale(identifier: candidate),
                    arguments: arguments
                ) {
                 return template

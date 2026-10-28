@@ -69,7 +69,7 @@ public final class Lingora {
     /// 初始化成功返回 true；无效配置返回 false，重复调用保留首次配置。
     @discardableResult
     public func initialize(
-        contentDeliveryURL: URL,
+        contentDeliveryURL: URL? = nil,
         locale: Locale = .current,
         language: String? = nil,
         namespaces: Set<String> = [],
@@ -85,7 +85,7 @@ public final class Lingora {
             emit(.debug, "Repeated initialize call was ignored")
             return true
         }
-        guard Self.isSafeHTTPURL(contentDeliveryURL) else {
+        guard contentDeliveryURL.map { Self.isSafeHTTPURL($0) } ?? true else {
             emit(.error, "Content Delivery URL must be a credential-free HTTP(S) URL")
             return false
         }
@@ -174,6 +174,10 @@ public final class Lingora {
             emit(.error, "Fetch language must be a safe path component")
             return
         }
+        guard let baseURL = configuration.contentDeliveryURL else {
+            if !isPrefetch { loadState = .fallback(failedTables: Self.tables(for: configuration)) }
+            return
+        }
         let requestedGeneration = generation
         guard await acquireLoad() else { return }
         defer { releaseLoad() }
@@ -195,7 +199,6 @@ public final class Lingora {
         if !isPrefetch { loadState = .loading }
         let store = self.store
         let cacheGeneration = store.cacheGeneration
-        let baseURL = configuration.contentDeliveryURL
         var loaded: [String: (TranslationDocument, LingoraFetchSource)] = [:]
         var cancelled = false
         var failedTables: [String] = []
@@ -305,7 +308,7 @@ public final class Lingora {
             key,
             arguments: arguments,
             table: table,
-            locale: remoteLocale
+            locale: resolvedLanguage.map { Locale(identifier: $0) } ?? locale
         ), let rendered = SafeFormatter.render(template, arguments: arguments, locale: remoteLocale) {
             return rendered
         }
@@ -317,7 +320,6 @@ public final class Lingora {
                directory: directory,
                language: currentLanguage ?? Self.languageTag(for: locale),
                table: sdkTable?.isEmpty == true ? nil : sdkTable,
-               locale: locale,
                arguments: arguments
            ), let rendered = SafeFormatter.render(template, arguments: arguments, locale: locale) {
             return rendered
@@ -430,9 +432,8 @@ public final class Lingora {
 
     /// 初始化或切换语言后异步恢复当前 language/table 的有效磁盘缓存。
     private func restoreCachedDocuments(language: String, generation requestedGeneration: UInt64) {
-        guard let configuration else { return }
+        guard let configuration, let baseURL = configuration.contentDeliveryURL else { return }
         let tables = Self.tables(for: configuration)
-        let baseURL = configuration.contentDeliveryURL
         let store = self.store
         Task { [weak self] in
             guard let self else { return }

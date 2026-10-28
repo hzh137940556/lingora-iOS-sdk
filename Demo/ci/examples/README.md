@@ -28,7 +28,7 @@ SDK 本身只需要 Swift Package 和公开 Content Delivery URL。需要上传�
 
 ## 本地使用同一工具
 
-在单独目录检出同一个固定工具提交后，用 Python 3.10+ 和 uv 执行（路径按业务项目调整）：
+在单独目录检出同一个固定工具提交后，在 macOS 用 Python 3.10+ 和 uv 执行（路径按业务项目调整）：
 
 ```bash
 python3 /path/to/lingora-tools/Demo/scripts/sync_translations.py \
@@ -36,7 +36,17 @@ python3 /path/to/lingora-tools/Demo/scripts/sync_translations.py \
   --version-file lingora-cli.version
 ```
 
-上述命令会写远端，必须先确认目标和设置 `LINGORA_API_KEY`。只检查已有生成文件及 App 打包结果：
+上述命令会写远端，必须先确认目标和设置 `LINGORA_API_KEY`。首次接入先检查全部源文件兼容性，
+无需 uv、CLI 或 API Key：
+
+```bash
+python3 /path/to/lingora-tools/Demo/scripts/push_icu.py \
+  --config ci/lingora.production.json --check --report-json
+```
+
+有问题时返回非零退出码并列出所有可解析词条的 file/key 诊断；支持范围包含单参数 signed integer
+和 `.xcstrings` 普通文本/独立 plural。多参数重排、device/substitutions 等有损结构仍拒绝。
+只检查已有生成文件及 App 打包结果：
 
 ```bash
 python3 /path/to/lingora-tools/Demo/scripts/sync_translations.py \

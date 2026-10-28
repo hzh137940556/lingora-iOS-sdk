@@ -124,6 +124,82 @@ final class LingoraTests: XCTestCase {
         try? FileManager.default.removeItem(at: temporary)
     }
 
+    /// 显式语言覆盖只决定文档与复数；参数仍使用调用方的格式化 locale。
+    func testExplicitLanguageUsesDocumentPluralRules() async throws {
+        let document = #"{"items":{"variations":{"plural":{"one":"%lld item","other":"%lld items"}}},"decimal":"%.2f"}"#
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary, appVersion: "1")
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!,
+                       locale: Locale(identifier: "ja-JP"), language: "en")
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(document.utf8))]
+        await sdk.remoteFetch()
+        XCTAssertEqual(sdk.translate("items", Int64(1)), "1 item")
+        XCTAssertEqual(sdk.translate("items", Int32(1)), "1 item")
+        try sdk.setCustomLocale(Locale(identifier: "fr-FR"), language: "en")
+        XCTAssertEqual(sdk.translate("items", Int64(0)), "0 items")
+        XCTAssertEqual(sdk.translate("decimal", 1.5), "1,50")
+        let restored = Lingora(session: makeSession(), cacheDirectory: temporary, appVersion: "1")
+        restored.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!,
+                            locale: Locale(identifier: "ja-JP"), language: "en")
+        MockURLProtocol.error = URLError(.notConnectedToInternet)
+        await restored.remoteFetch()
+        XCTAssertEqual(restored.translate("items", Int64(1)), "1 item")
+    }
+
+    /// 纯离线 JSON 初始化不需要伪造 URL；加载、预取、切换、清缓存均不请求网络。
+    func testOfflineInitializationAndDocumentLocale() async throws {
+        let bundle = try makeJSONBundle([
+            "Lingora/app/en.json": #"{"items":{"variations":{"plural":{"one":"%lld item","other":"%lld items"}}}}"#,
+            "Lingora/common/ja.json": #"{"hello":"日本語"}"#,
+            "ja.lproj/Localizable.strings": #""native" = "Native fallback";"#])
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary, appVersion: "1")
+        XCTAssertTrue(sdk.initialize(locale: Locale(identifier: "ja-JP"), language: "en", namespaces: ["common"],
+                                     bundledTranslationsDirectory: "Lingora", defaultNamespace: "app"))
+        XCTAssertEqual(sdk.translate("items", Int64(1), bundle: bundle), "1 item")
+        XCTAssertEqual(sdk.translate("absent", bundle: bundle), "absent")
+        XCTAssertEqual(sdk.translate("native", bundle: bundle), "Native fallback")
+        await sdk.preload()
+        await sdk.remoteFetch()
+        await sdk.remoteFetch(language: "fr")
+        try sdk.setCustomLocale(Locale(identifier: "en-US"), language: "ja")
+        XCTAssertEqual(sdk.translate("hello", table: "common", bundle: bundle), "日本語")
+        await sdk.preload()
+        try sdk.clearCache()
+        XCTAssertEqual(sdk.translate("hello", table: "common", bundle: bundle), "日本語")
+        XCTAssertEqual(MockURLProtocol.requestCount, 0)
+        XCTAssertNil(sdk.lastFetchSource)
+        XCTAssertNil(sdk.lastFetchDate)
+    }
+
+    /// 新消费者在冷却内不重复请求，冷却结束后恢复加载，已成功时继续复用。
+    func testSharedUpdaterNewConsumerRetriesAfterCooldown() async throws {
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary, appVersion: "1")
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        MockURLProtocol.error = URLError(.notConnectedToInternet)
+        let first = LingoraSwiftUIUpdater.shared(lingora: sdk)
+        for _ in 0..<100 where MockURLProtocol.requestCount < 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        await sdk.preload()
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+        let second = LingoraSwiftUIUpdater.shared(lingora: sdk)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+        try await Task.sleep(for: .milliseconds(5100))
+        MockURLProtocol.error = nil
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"hello":"Recovered"}"#.utf8))]
+        let third = LingoraSwiftUIUpdater.shared(lingora: sdk)
+        for _ in 0..<100 where sdk.translate("hello") != "Recovered" {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(first === third)
+        XCTAssertEqual(MockURLProtocol.requestCount, 3)
+        XCTAssertEqual(sdk.translate("hello"), "Recovered")
+        let fourth = LingoraSwiftUIUpdater.shared(lingora: sdk)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(MockURLProtocol.requestCount, 3)
+        withExtendedLifetime((first, second, third, fourth)) {}
+    }
+
     /// 默认文本共享监听，但没有视图持有时不保留后台加载生命周期。
     func testSharedUpdaterReleasesWithLastConsumer() async {
         var first: LingoraSwiftUIUpdater? = .shared()
@@ -465,7 +541,7 @@ final class LingoraTests: XCTestCase {
         XCTAssertEqual(enabled.translate("hello", table: "large", bundle: bundle), "hello")
         let store = BundledTranslationStore()
         XCTAssertNil(store.template(for: "hello", bundle: bundle, directory: "Lingora",
-                                    language: "en", table: "../Lingora/app", locale: Locale(identifier: "en"), arguments: []))
+                                    language: "en", table: "../Lingora/app", arguments: []))
         let invalid = Lingora(session: makeSession(), cacheDirectory: temporary.appendingPathComponent("invalid"))
         invalid.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, bundledTranslationsDirectory: "../Lingora")
         XCTAssertFalse(invalid.isInitialized)

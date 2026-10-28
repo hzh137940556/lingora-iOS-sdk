@@ -9,32 +9,39 @@ public final class LingoraSwiftUIUpdater: ObservableObject {
     private static weak var sharedInstance: LingoraSwiftUIUpdater?
 
     /// 活跃的默认文本共享观察对象；最后一个视图释放后仍可取消监听和加载。
-    static func shared() -> LingoraSwiftUIUpdater {
-        if let sharedInstance { return sharedInstance }
-        let updater = LingoraSwiftUIUpdater()
+    static func shared(lingora: Lingora = .shared) -> LingoraSwiftUIUpdater {
+        if let sharedInstance, sharedInstance.lingora === lingora {
+            // 新消费者必须重新尝试按需加载；SDK 统一合并请求和执行失败冷却。
+            sharedInstance.requestPreload()
+            return sharedInstance
+        }
+        let updater = LingoraSwiftUIUpdater(lingora: lingora)
         sharedInstance = updater
         return updater
     }
 
+    private let lingora: Lingora
     private var task: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
 
     /// 对齐 Android tFlow：先显示已有值，再按需预加载；语言切换时重复此过程。
     public init(lingora: Lingora = .shared) {
+        self.lingora = lingora
         task = Task { [weak self] in
             guard !Task.isCancelled else { return }
             let updates = lingora.onTranslationsUpdated()
-            self?.requestPreload(lingora)
+            self?.requestPreload()
             for await _ in updates {
                 guard !Task.isCancelled else { return }
                 self?.objectWillChange.send()
-                self?.requestPreload(lingora)
+                self?.requestPreload()
             }
         }
     }
 
     /// 加载与更新监听独立执行，缓存和语言变化事件不等待网络完成。
-    private func requestPreload(_ lingora: Lingora) {
+    private func requestPreload() {
+        let lingora = self.lingora
         loadTask?.cancel()
         loadTask = Task { await lingora.preload() }
     }

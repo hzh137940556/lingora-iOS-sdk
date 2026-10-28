@@ -36,7 +36,7 @@ public struct LingoraLogMessage: Sendable, Equatable {
 
 /// 保存初始化后不可变的公开配置。
 struct LingoraConfiguration: Sendable {
-    let contentDeliveryURL: URL
+    let contentDeliveryURL: URL?
     let locale: Locale
     let language: String
     let namespaces: Set<String>

@@ -33,3 +33,9 @@ KEEP 不修复历史词条。SDK 保留格式校验、plural 边界、刷新顺�
 
 不新增 manifest、数组翻译或服务器配置；Android、服务端和 Demo UI 不变。
 翻译 CI 改为消费提交的精确版本和锁文件，不再读取远端版本 Variable。
+
+后续 review 修复：文档语言决定 plural，显式语言与设备 locale 不同不再选错类别；
+共享观察对象的新消费者仍触发 preload，保留 Android 的失败冷却后重试行为。
+与 Android 空 Delivery URL 对齐，省略 iOS URL 可纯离线使用 Bundle JSON / 原生资源。
+上传工具完整扫描源词条，支持 signed 单参数和 xcstrings 的普通文本/独立复数；
+多参数重排与复杂 catalog 变体仍明确拒绝，不绕过现有导出协议。
