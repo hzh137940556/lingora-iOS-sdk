@@ -134,15 +134,18 @@ SDK 发布与独立 Package 验收在单独 PR 中维护，不依赖此 Demo 工
 | --- | --- | --- |
 | Secret | `LINGORA_API_KEY` | 该项目和分支的上传/下载密钥 |
 | Variable | `LINGORA_CONTENT_DELIVERY_URL` | 对应 APPLE_SDK 的公开 URL，不能为空 |
-| Variable | `LINGORA_IOS_SDK_VERSION` | 实际已发布的固定 dev 版本，当前为 `0.1.0-dev.3`（与 Demo 配置同步） |
 | Variable | `LINGORA_TRANSLATIONS_ENABLED` | 配置完成后设置 `true`，允许真实同步 |
 
 未启用时同步 Job 跳过，普通 PR 与 `make verify` 始终不写翻译服务。工作流进入默认分支后才能
 稳定使用手动入口。手动选择非 develop 分支不会同步，上传前还会拒绝落后于最新 develop 的提交。
 
-启用后流程为配置并解析固定 SDK / 检查公开 URL → 固定 CLI → validate → push → app/common pull → validate → 必需文件检查 →
+SDK 版本以提交中的 `Demo/sdk-source.json` 和 `Package.resolved` 为唯一来源；旧的
+`LINGORA_IOS_SDK_VERSION` Variable 不再读取，可从仓库设置中删除。
+
+启用后流程为检查并解析锁定 SDK / 检查公开 URL → 固定 CLI → validate → push → app/common pull → validate → 必需文件检查 →
 远端固定版本 Package 构建 → 检查生成资源进入正确 Bundle → 已发布 SDK 离线加载产物验证 → 上传模拟器 App ZIP（保留 7 天）。
-只检出 Demo，在上传前通过同一配置命令应用固定 dev 版本，不允许本地 SDK 源码兜底。API Key 仅用于同步步骤，不传给 Xcode。
+只检出 Demo，上传前使用 `build_demo.py --resolve-locked` 校验配置及锁文件，并仅解析锁定版本。
+缺失或不一致直接失败，不改写版本，也不允许本地 SDK 源码兜底。API Key 仅用于同步步骤，不传给 Xcode。
 成功 push 不因后续失败回滚，KEEP 不覆盖已有非空值；CLI 同步不会自动发布 Content Delivery。
 
 当前配置使用既有 CLI 的 `apple-sdk` JSON 下载，SDK `0.1.0-dev.3` 读取 Bundle JSON，

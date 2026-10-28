@@ -6,6 +6,16 @@ import SwiftUI
 /// 将 Lingora 更新流桥接为 SwiftUI ObservableObject。
 @MainActor
 public final class LingoraSwiftUIUpdater: ObservableObject {
+    private static weak var sharedInstance: LingoraSwiftUIUpdater?
+
+    /// 活跃的默认文本共享观察对象；最后一个视图释放后仍可取消监听和加载。
+    static func shared() -> LingoraSwiftUIUpdater {
+        if let sharedInstance { return sharedInstance }
+        let updater = LingoraSwiftUIUpdater()
+        sharedInstance = updater
+        return updater
+    }
+
     private var task: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
 
@@ -58,7 +68,7 @@ public struct LingoraText: View {
         self.table = table
         self.bundle = bundle
         self.locale = locale
-        _updater = StateObject(wrappedValue: LingoraSwiftUIUpdater())
+        _updater = StateObject(wrappedValue: LingoraSwiftUIUpdater.shared())
     }
 
     public var body: some View {
@@ -71,6 +81,5 @@ public struct LingoraText: View {
                 locale: locale
             )
         )
-        .id(ObjectIdentifier(updater))
     }
 }

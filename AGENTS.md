@@ -18,7 +18,9 @@
 - 网络或无效远端数据不得清空最后有效翻译；内存文档及加载标记按实际语言＋namespace 隔离。缓存写入使用原子替换，并与 clearCache 的代次失效和删除共享同步屏障，旧请求不得复活已清缓存。
 - 可选 Bundle APPLE_SDK JSON 只能读取调用方 Bundle，按语言/namespace 隔离并复用文档校验；默认关闭，不影响 CLI、服务端或系统资源回退。
 - 默认 namespace 只影响 SDK 文档，不改变原生 Bundle table；语言匹配遵循 Android 候选标签顺序；Apple 不输出 manifest，由调用方提供语言列表。不新增加载策略枚举，使用 preload、remoteFetch 和 SwiftUI 按需加载。
-- swizzling 默认关闭，只接管普通字符串；plural fallback 继续交给系统资源。
+- swizzling 默认关闭，只接管显式允许的 Bundle（默认 main）的普通字符串；plural fallback 继续交给系统资源。
+- 复数规则由固定 Unicode CLDR 数据生成，维护官方样例回归测试；普通数值不能按数量级推断 compact 指数。
+- 下载必须按实际读取字节限制大小，不能仅在完整下载后或仅依赖 Content-Length 检查。
 
 ## Demo 与 CLI 边界
 
@@ -36,6 +38,8 @@
 - Demo 公开 URL 由 build setting 写入 Info.plist；CI 必须显式注入，不能静默使用工程开发默认值。
 - iOS 原生源文件上传必须经 `push_icu.py` 转为可往返的 ICU JSON；复杂或歧义格式上传前失败，不改 CLI/服务端，不自动覆盖历史词条。
 - CLI 顺序固定为 validate/push/pull/validate/资源检查，即使 `make -j` 也必须串行，失败立即退出。
+- 翻译 CI 仅消费提交中的 sdk-source.json 与 Package.resolved，禁止外部 Variable 覆盖版本或解析时静默改锁。
+- 业务翻译工具通过配置映射任意 namespace/输出目录/Bundle；可复用 Action 固定到开发仓库 commit SHA，不能使用 package-only SDK Tag。
 - 真实翻译工作流仅在 develop 且 `LINGORA_TRANSLATIONS_ENABLED=true` 时运行，Secret 仅用于 CLI 步骤。
 - 普通 CI 可在公开 URL 变量非空时只读验收公开 CDN，使用固定发布 SDK 和无 Bundle 翻译的临时消费者；不传 Secret、不执行 CLI 写入，不放宽 develop 同步门禁。
 

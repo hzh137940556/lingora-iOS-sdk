@@ -108,6 +108,34 @@ class SDKSourceTests(unittest.TestCase):
         self.assertIn('relativePath = "../自定义 SDK";', self.project.read_text())
         configure(self.demo, check=True)
 
+    # CI 在解析之前拒绝缺失锁；有效锁只允许精确锁版本解析，不重写配置。
+    def test_ci_locked_resolution(self):
+        config = configure(self.demo, {"mode": "dev", "version": "1.2.3-dev.4"})
+        args = argparse.Namespace(fixture_channel=None, resolve_only=False, resolve_locked=True,
+                                  check_resources=False, config=None, artifact=None)
+        with patch("build_demo.DEMO", self.demo), patch("build_demo.subprocess.run") as run:
+            with self.assertRaisesRegex(ValueError, "Package.resolved"):
+                build(args, self.root / "build")
+            run.assert_not_called()
+        lock = self.demo / "LingoraDemo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+        lock.parent.mkdir(parents=True)
+        lock.write_text(json.dumps({"pins": [{"kind": "remoteSourceControl", "location": config["repositoryURL"],
+                                               "state": {"version": config["version"], "revision": "a" * 40}}]}))
+        before = (self.config.read_bytes(), self.project.read_bytes(), lock.read_bytes())
+        with patch("build_demo.DEMO", self.demo), patch("build_demo.subprocess.run") as run:
+            build(args, self.root / "build")
+        command = run.call_args.args[0]
+        self.assertIn("-onlyUsePackageVersionsFromResolvedFile", command)
+        self.assertEqual(command[-1], "-resolvePackageDependencies")
+        self.assertEqual(before, (self.config.read_bytes(), self.project.read_bytes(), lock.read_bytes()))
+        def changed_pin(*args, **kwargs):
+            value = json.loads(lock.read_text())
+            value["pins"][0]["state"]["revision"] = "b" * 40
+            lock.write_text(json.dumps(value))
+        with patch("build_demo.DEMO", self.demo), patch("build_demo.subprocess.run", side_effect=changed_pin):
+            with self.assertRaisesRegex(ValueError, "changed committed"):
+                build(args, self.root / "build")
+
     # 缺失或与工程不一致的锁文件不能被普通构建静默更新。
     def test_remote_build_requires_matching_lock(self):
         config = configure(self.demo, {"mode": "dev", "version": "0.1.0-dev.1"})

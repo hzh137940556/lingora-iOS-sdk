@@ -12,6 +12,7 @@ sdk-build:
 	swift build --package-path SDK
 
 sdk-test:
+	python3 scripts/generate_plural_rules.py --check
 	swift test --package-path SDK --no-parallel --enable-code-coverage
 
 demo-build:

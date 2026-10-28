@@ -20,7 +20,7 @@ local 引用 `../SDK`，dev/release 引用远端精确版本；两者都只链�
 
 SDK 的安装与公开 API 说明见 [SDK/README.md](SDK/README.md)。
 本地/远端 Package 消费、CLI 命令和资源打包见 [Demo 接入指南](Demo/README.md)。
-业务仓库的自动同步见 [iOS CI 模板](Demo/ci/examples/README.md)。
+业务仓库通过固定提交的通用 Action 配置 namespace 与 Bundle，无需复制 Python 脚本，见 [iOS CI 模板](Demo/ci/examples/README.md)。
 
 ## Demo 与 CLI
 

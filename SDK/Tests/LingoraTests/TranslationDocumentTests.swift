@@ -62,24 +62,31 @@ final class TranslationDocumentTests: XCTestCase {
         )
     }
 
-    /// 覆盖 Tolgee 对齐规则中的负数、小数和多 category 语言。
+    /// 覆盖 CLDR 规则中的负数、小数和多 category 语言。
     func testCompletePluralRulesForNegativeAndFractionalValues() {
         let cases: [(String, Double, String)] = [
-            ("en", -1, "other"),
+            ("en", -1, "one"),
             ("en", 1.5, "other"),
             ("cs", 2.1, "many"),
             ("hr", 1.2, "few"),
             ("sl", 1.5, "few"),
             ("lv", 0, "zero"),
             ("he", 2, "two"),
-            ("ar", 3.5, "few"),
-            ("ar", 11.5, "many"),
+            ("ar", 3.5, "other"),
+            ("ar", 11.5, "other"),
             ("cy", 6, "many"),
             ("ro", 1.5, "few"),
             ("br", 1_000_000, "many"),
-            ("pa", 0.5, "one"),
+            ("pa", 0.5, "other"),
             ("si", 0.1, "one"),
             ("ja", 1, "other"),
+            ("pt-PT", 0, "other"),
+            ("pt-BR", 0, "one"),
+            ("is", 21, "one"),
+            ("fr", 1_000_001, "other"),
+            ("fr", 1_000_000, "many"),
+            ("en", 1e-7, "other"),
+            ("sr", 0.012345678901234561, "one"),
         ]
 
         for (language, value, expected) in cases {

@@ -36,7 +36,7 @@ private extension Bundle {
         let fallback = lingoraLocalizedString(forKey: key, value: value, table: tableName)
         guard Thread.isMainThread else { return fallback }
         return MainActor.assumeIsolated {
-            Lingora.shared.swizzledTranslation(for: key, table: tableName) ?? fallback
+            Lingora.shared.swizzledTranslation(for: key, table: tableName, bundle: self) ?? fallback
         }
     }
 }

@@ -152,6 +152,24 @@ actor ContentDeliveryStore {
             .appendingPathExtension("json")
     }
 
+    /// 分块读取时限制实际响应大小；不信任 Content-Length，退出时取消剩余下载。
+    static func readLimited(_ request: URLRequest, session: URLSession,
+                            maximumBytes: Int = TranslationDocument.maximumBytes) async throws -> (Data, URLResponse) {
+        let (bytes, response) = try await session.bytes(for: request)
+        defer { bytes.task.cancel() }
+        // 304、错误响应不需要正文，避免错误页或无限错误流消耗资源。
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { return (Data(), response) }
+        guard response.expectedContentLength <= Int64(maximumBytes) else {
+            throw URLError(.dataLengthExceedsMaximum)
+        }
+        var data = Data()
+        for try await byte in bytes {
+            guard data.count < maximumBytes else { throw URLError(.dataLengthExceedsMaximum) }
+            data.append(byte)
+        }
+        return (data, response)
+    }
+
     /// 执行条件请求；任何无效响应都不覆盖缓存。
     private static func fetch(
         url: URL,
@@ -187,7 +205,7 @@ actor ContentDeliveryStore {
                 )
             }
             do {
-                let (data, response) = try await session.data(for: request)
+                let (data, response) = try await Self.readLimited(request, session: session)
                 if Task.isCancelled || barrier.generation != generation {
                     return LoadedDocument(
                         document: nil,

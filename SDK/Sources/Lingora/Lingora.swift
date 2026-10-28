@@ -19,6 +19,7 @@ public final class Lingora {
     private var defaultLanguage: String?
     private var explicitLanguage = false
     private var defaultNamespace: String?
+    private var swizzlingBundleURLs: Set<URL> = []
     /// 与 Android 一样按实际文档语言和 namespace 隔离内存及加载状态。
     private struct DocumentKey: Hashable {
         let language: String
@@ -65,7 +66,8 @@ public final class Lingora {
         )
     }
 
-    /// 初始化 Content Delivery、语言、namespace 和可选 Bundle JSON 目录；无效配置不启用。
+    /// 初始化成功返回 true；无效配置返回 false，重复调用保留首次配置。
+    @discardableResult
     public func initialize(
         contentDeliveryURL: URL,
         locale: Locale = .current,
@@ -76,35 +78,36 @@ public final class Lingora {
         bundledTranslationsDirectory: String? = nil,
         defaultNamespace: String? = nil,
         availableLanguages: [String]? = nil,
-        defaultLanguage: String? = nil
-    ) {
+        defaultLanguage: String? = nil,
+        swizzlingBundles: [Bundle] = [.main]
+    ) -> Bool {
         guard configuration == nil else {
             emit(.debug, "Repeated initialize call was ignored")
-            return
+            return true
         }
         guard Self.isSafeHTTPURL(contentDeliveryURL) else {
             emit(.error, "Content Delivery URL must be a credential-free HTTP(S) URL")
-            return
+            return false
         }
         if let directory = bundledTranslationsDirectory, !Self.isSafePathComponent(directory) {
             emit(.error, "Bundled translation directory must be a safe path component")
-            return
+            return false
         }
         if let defaultNamespace, !Self.isSafePathComponent(defaultNamespace) {
             emit(.error, "Invalid default namespace")
-            return
+            return false
         }
         guard availableLanguages.map(LanguageResolver.validList) ?? true,
               defaultLanguage.map(LanguageResolver.validTag) ?? true else {
             emit(.error, "Invalid language configuration")
-            return
+            return false
         }
         let resolvedLanguage = language ?? Self.languageTag(for: locale)
         guard Self.isSafePathComponent(resolvedLanguage),
               namespaces.allSatisfy({ Self.isSafePathComponent($0) })
         else {
             emit(.error, "Language and namespaces must be safe path components")
-            return
+            return false
         }
         configuration = LingoraConfiguration(
             contentDeliveryURL: contentDeliveryURL,
@@ -113,6 +116,7 @@ public final class Lingora {
             namespaces: namespaces.union(defaultNamespace.map { [$0] } ?? []),
             enableDebugLogs: enableDebugLogs
         )
+        swizzlingBundleURLs = Set(swizzlingBundles.map { $0.bundleURL.standardizedFileURL })
         self.defaultNamespace = defaultNamespace
         self.publishedLanguages = availableLanguages
         self.availableLanguages = availableLanguages ?? []
@@ -135,6 +139,7 @@ public final class Lingora {
         }
         emit(.debug, "Lingora initialized for language \(resolvedLanguage)")
         restoreCachedDocuments(language: resolvedLanguage, generation: generation)
+        return true
     }
 
     /// 获取当前语言或预取指定语言；预取不会切换当前展示语言。
@@ -400,8 +405,9 @@ public final class Lingora {
     }
 
     /// 供可选 Bundle swizzling 查询普通远端文本，避免递归进入 fallback。
-    func swizzledTranslation(for key: String, table: String?) -> String? {
-        guard case .text(let text)? = currentDocument(table: table)?.values[key] else {
+    func swizzledTranslation(for key: String, table: String?, bundle: Bundle) -> String? {
+        guard swizzlingBundleURLs.contains(bundle.bundleURL.standardizedFileURL),
+              case .text(let text)? = currentDocument(table: table)?.values[key] else {
             return nil
         }
         return text

@@ -99,6 +99,18 @@ def build(args: argparse.Namespace, workspace: Path) -> None:
         command.append(f"LINGORA_CONTENT_DELIVERY_URL={delivery.strip()}")
     if args.fixture_channel:
         command.append("LINGORA_SDK_TEST_FIXTURE=1")
+    if getattr(args, "resolve_locked", False):
+        check_resolution(demo, config)
+        if config["mode"] == "local":
+            raise ValueError("Locked remote resolution requires dev or release mode")
+        lock = demo / "LingoraDemo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+        pins = json.loads(lock.read_text())["pins"]
+        command.append("-onlyUsePackageVersionsFromResolvedFile")
+        subprocess.run([*command, "-resolvePackageDependencies"], check=True)
+        check_resolution(demo, config)
+        if json.loads(lock.read_text())["pins"] != pins:
+            raise ValueError("Locked resolution changed committed package pins")
+        return
     if args.resolve_only or args.fixture_channel:
         subprocess.run([*command, "-resolvePackageDependencies"], check=True)
     check_resolution(demo, config, fixture=bool(args.fixture_channel))
@@ -144,6 +156,7 @@ def main() -> None:
                         help="Test-only: build a temporary Git package in an isolated consumer")
     parser.add_argument("--check-resources", action="store_true")
     parser.add_argument("--config")
+    parser.add_argument("--resolve-locked", action="store_true", help="Resolve only the committed remote lock before CI writes")
     parser.add_argument("--resolve-only", action="store_true",
                         help="Explicitly resolve a changed SDK source/version before building and commit Package.resolved")
     parser.add_argument("--artifact", help="New destination for the simulator .app")

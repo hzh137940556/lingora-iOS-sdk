@@ -17,8 +17,8 @@ jobs:
     timeout-minutes: 30
     env:
       LINGORA_CONFIG: ci/lingora.production.json
-      APP_OUTPUT: LingoraDemo/Generated
-      COMMON_OUTPUT: LingoraCommon/Generated
+      LINGORA_RESOURCES: ci/ios-resources.json
+      APP_PRODUCT: LingoraDemo.app
       XCODE_PROJECT: LingoraDemo.xcodeproj
       XCODE_SCHEME: LingoraDemo
       LINGORA_CONTENT_DELIVERY_URL: ${{ vars.LINGORA_CONTENT_DELIVERY_URL }}
@@ -29,18 +29,6 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '16.4'
-      - uses: astral-sh/setup-uv@v6
-      - name: Check inputs and pinned CLI
-        env:
-          LINGORA_API_KEY: ${{ secrets.LINGORA_API_KEY }}
-        run: |
-          : "${LINGORA_API_KEY:?Missing LINGORA_API_KEY}"
-          [[ -n "${LINGORA_CONTENT_DELIVERY_URL//[[:space:]]/}" ]]
-          test -f "$LINGORA_CONFIG"
-          version="$(tr -d '\r\n' < lingora-cli.version)"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(rc[0-9]+)?$ ]]
-          uv tool install --python 3.12 "lingora-cli==$version"
-          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
       - name: Check public URL and resolve locked SDK before remote writes
         run: |
           python3 - <<'PYTHON'
@@ -61,29 +49,30 @@ jobs:
         run: |
           latest_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq .sha)"
           [[ "$latest_sha" == "$GITHUB_SHA" ]] || { echo 'Outdated source; run the latest commit.'; exit 1; }
-      - name: Validate, push, pull and validate both namespaces
+      # 使用包含该 Action 的已审阅开发仓库 commit SHA；SDK package-only Tag 不含 Action。
+      - name: Sync configured namespaces
+        uses: hzh137940556/lingora-iOS-sdk/.github/actions/ios-translations@REPLACE_WITH_REVIEWED_COMMIT_SHA
+        with:
+          config: ${{ env.LINGORA_CONFIG }}
+          resources: ${{ env.LINGORA_RESOURCES }}
         env:
           LINGORA_API_KEY: ${{ secrets.LINGORA_API_KEY }}
-        run: |
-          lingora --config "$LINGORA_CONFIG" validate --namespaces app --path "$APP_OUTPUT"
-          lingora --config "$LINGORA_CONFIG" validate --namespaces common --path "$COMMON_OUTPUT"
-          python3 ci/push_icu.py --config "$LINGORA_CONFIG" --version "$(tr -d '\r\n' < lingora-cli.version)"
-          lingora --config "$LINGORA_CONFIG" pull --namespaces app --path "$APP_OUTPUT"
-          lingora --config "$LINGORA_CONFIG" pull --namespaces common --path "$COMMON_OUTPUT"
-          lingora --config "$LINGORA_CONFIG" validate --namespaces app --path "$APP_OUTPUT"
-          lingora --config "$LINGORA_CONFIG" validate --namespaces common --path "$COMMON_OUTPUT"
-          python3 ci/check_resources.py --config "$LINGORA_CONFIG" \
-            --app-output "$APP_OUTPUT" --common-output "$COMMON_OUTPUT"
       - name: Build committed package versions
         run: |
           xcodebuild -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" -configuration Debug \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/Packages" -disableAutomaticPackageResolution \
             "LINGORA_CONTENT_DELIVERY_URL=$LINGORA_CONTENT_DELIVERY_URL" CODE_SIGNING_ALLOWED=NO build
-          app="$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/$XCODE_SCHEME.app"
-          python3 ci/check_resources.py --config "$LINGORA_CONFIG" \
-            --app-output "$APP_OUTPUT" --common-output "$COMMON_OUTPUT" --app-bundle "$app"
+          app="$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/$APP_PRODUCT"
+          echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
           ditto -c -k --sequesterRsrc --keepParent "$app" "$RUNNER_TEMP/ios-simulator.zip"
+      - name: Verify packaged namespace resources
+        uses: hzh137940556/lingora-iOS-sdk/.github/actions/ios-translations@REPLACE_WITH_REVIEWED_COMMIT_SHA
+        with:
+          config: ${{ env.LINGORA_CONFIG }}
+          resources: ${{ env.LINGORA_RESOURCES }}
+          check-only: 'true'
+          app-bundle: ${{ env.APP_BUNDLE }}
       - uses: actions/upload-artifact@v4
         with:
           name: ios-simulator-${{ github.sha }}

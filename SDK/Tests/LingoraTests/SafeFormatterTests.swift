@@ -36,7 +36,7 @@ final class SafeFormatterTests: XCTestCase {
     /// 极大整数、无穷和 NaN 必须安全选择 other，不触发 Double 到 Int 陷阱。
     func testPluralNumericBoundaries() throws {
         let values = [Double(Int64.max), Double(UInt64.max), Double.greatestFiniteMagnitude,
-                      Double.infinity, -Double.infinity, Double.nan, -1]
+                      Double.infinity, -Double.infinity, Double.nan]
         for number in values {
             XCTAssertEqual(PluralRules.category(for: number, locale: Locale(identifier: "en")), "other")
         }

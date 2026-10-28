@@ -33,8 +33,9 @@ def read_resource(path: Path) -> dict:
     return value
 
 
-# 根据配置的目标语言检查两个 namespace；目录由调用方显式传入。
-def check(config: Path, outputs: dict[str, Path], app_bundle: Path | None = None) -> None:
+# 根据配置检查任意 namespace 及其 Bundle 归属；目录由调用方显式传入。
+def check(config: Path, outputs: dict[str, Path], app_bundle: Path | None = None,
+          *, bundle_paths: dict[str, Path] | None = None) -> None:
     pull = json.loads(config.read_text())["pull"]
     if (pull.get("format") != "apple-sdk"
             or pull.get("fileStructureTemplate") != "Lingora/{namespace}/{languageTag}.{extension}"):
@@ -47,8 +48,10 @@ def check(config: Path, outputs: dict[str, Path], app_bundle: Path | None = None
             raise ValueError("Unsafe language tag")
         for namespace, output in outputs.items():
             bundle = app_bundle
-            if bundle is not None and namespace == "common":
-                bundle = bundle / "Frameworks/LingoraCommon.framework"
+            if bundle is not None:
+                relative_bundle = (bundle_paths[namespace] if bundle_paths is not None else
+                                   Path("Frameworks/LingoraCommon.framework" if namespace == "common" else "."))
+                bundle = bundle / relative_bundle
             relative = Path(f"Lingora/{namespace}/{language}.json")
             expected = read_resource(output / relative)
             if bundle is not None and read_resource(bundle / relative) != expected:

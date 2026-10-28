@@ -1,53 +1,62 @@
 # 业务 iOS 项目的翻译同步 CI
 
-将 `ios-lingora.yml` 复制到业务仓库 `.github/workflows/`。它是模板，不在 SDK 仓库执行。
-开发者可只在 CI 使用 CLI，本机正常 Xcode 构建不需要 CLI。
+SDK 本身只需要 Swift Package 和公开 Content Delivery URL。需要上传源文案并将翻译打包进 App 时，
+再启用本流程；普通 Xcode 构建不运行 CLI。
 
-## 接入前配置
+## 一次性接入
 
-1. 按 SDK README 在已有 Xcode 工程添加远端 Package，并关联实际使用它的 App/framework target。
-   使用已发布的精确版本，提交该工程的 `Package.resolved`。CI 使用锁文件，不回退本地 SDK。
-   如果复制整个 Demo，先用 `make configure-sdk SDK_MODE=release SDK_VERSION=X.Y.Z` 应用配置，
-   解析后提交 `sdk-source.json`、工程和锁文件；同时保留 `scripts/configure_sdk.py`，供 Xcode 构建期检查。
-2. 复制 Demo 的 `lingora-cli.version` 到仓库根目录，将 `scripts/check_resources.py` 复制到业务仓库
-   `ci/check_resources.py`；将 `scripts/push_icu.py` 复制到 `ci/push_icu.py`。
-   后者在上传前将受支持的原生资源转成 ICU JSON，再调用固定 CLI；正常 Xcode 构建不调用它。
-   支持范围及明确拒绝的格式见 Demo README 的“上传前 ICU 转换”。
-3. 参考 `Demo/ci/lingora.dev.json` 创建 `ci/lingora.production.json`，替换真实业务项目、分支、基础资源
-   和目标语言。不得直接使用 Demo 项目上传业务词条。配置不包含密钥。
-4. pull 使用 `apple-sdk`，布局为 `Lingora/{namespace}/{languageTag}.json`。
-   将生成目录关联到正确 target，保留 Lingora 文件夹层级并加入 `.gitignore`。
-   初始化 SDK 时传入 `bundledTranslationsDirectory: "Lingora"`，framework 翻译传入自己的 Bundle。
-   不要重复添加同语言同 table 的资源。
-5. 按项目修改模板的 `XCODE_PROJECT`、`XCODE_SCHEME`、`APP_OUTPUT`、`COMMON_OUTPUT`。
-   模板以 Demo 的 app/common 两个 namespace、LingoraCommon.framework 为起点；若 namespace、framework
-   名称或 `.app` product 名称不同，同步修改检查器中的 Bundle 映射和工作流产物路径。
-   使用 workspace 的项目将 `-project` 改为 `-workspace`。CLI 生成路径必须是专用目录。
-6. 将 App 的公开 Delivery URL 接入 build setting 和 Info.plist，初始化时读取，参考 Demo 实现。
-   仅传构建参数而不读取不会改变 SDK 地址。保留业务工程已有的其他初始化和资源逻辑。
+1. 按 SDK README 添加实际已发布的精确版本，关联 App/framework target，提交 `Package.resolved`。
+2. 将 `ios-lingora.yml` 放进 `.github/workflows/`。把两处 `REPLACE_WITH_REVIEWED_COMMIT_SHA` 替换为
+   **包含该 Action 的、已审阅的开发仓库完整 commit SHA**。该工具随源码提交交付；SDK SemVer Tag
+   是 package-only 快照，不含 Action，不能拿 `0.1.0-dev.3` 等 SDK Tag 作为工具版本。
+3. 准备以下三个配置文件，不复制或编辑 Python 工具源码：
+   - `lingora-cli.version`：固定公开 CLI 版本，例如 `0.1.0rc4`。
+   - `ci/lingora.production.json`：参考 Demo 配置，更换真实 Project/Branch、源文件和语言。
+     `push.files[].path` 相对此 CLI 配置文件；保留 KEEP 策略，不含密钥。
+     pull 使用 `apple-sdk` 和 `Lingora/{namespace}/{languageTag}.{extension}`。
+   - `ci/ios-resources.json`：参考同目录示例；key 为 namespace，`output` 相对此映射文件，
+     `bundle` 相对构建后的 App。例如 `.`、`Frameworks/MyFeature.framework` 或 `FeatureResources.bundle`。
+     可以是一组或多组，不能共享/嵌套输出目录，输出不得包含源文件。
+4. 修改工作流的 `XCODE_PROJECT`、`XCODE_SCHEME`、`APP_PRODUCT`。workspace 项目将 `-project`
+   改成 `-workspace`。将各生成目录作为保留层级的 Lingora 文件夹加入对应 target，并忽略提交。
+   SDK 初始化设置 `bundledTranslationsDirectory: "Lingora"`，framework 调用传自己的 Bundle。
+5. App 从 build setting / Info.plist 读取公开 Delivery URL 并传给 SDK；参考 Demo 实现。
+   在 GitHub 配置 `LINGORA_CONTENT_DELIVERY_URL` Variable 和 `LINGORA_API_KEY` Secret，后者只放同步步骤。
 
-在业务仓库 Settings → Secrets and variables → Actions 配置：
+当前新增工具需先进入可获取的 Git 提交，再填写该提交 SHA。SDK 版本和工具提交分别固定，
+升级工具只更新两处 SHA，不需要复制修复代码。许可证尚未确定，本流程不代替项目开源授权。
 
-| 类型 | 名称 | 作用 |
-| --- | --- | --- |
-| Secret | `LINGORA_API_KEY` | 目标 Lingora 项目和分支的上传、下载权限 |
-| Variable | `LINGORA_CONTENT_DELIVERY_URL` | 与该项目、分支、namespace 对应的公开 APPLE_SDK 地址 |
+## 本地使用同一工具
 
-公开 Swift Package 不需要 Maven 凭据。私有 Git 依赖沿用业务团队的只读 Git 认证配置，
-不要将 token 拼进依赖 URL、提交到 Package.resolved 或写入 App。
+在单独目录检出同一个固定工具提交后，用 Python 3.10+ 和 uv 执行（路径按业务项目调整）：
+
+```bash
+python3 /path/to/lingora-tools/Demo/scripts/sync_translations.py \
+  --config ci/lingora.production.json --resources ci/ios-resources.json \
+  --version-file lingora-cli.version
+```
+
+上述命令会写远端，必须先确认目标和设置 `LINGORA_API_KEY`。只检查已有生成文件及 App 打包结果：
+
+```bash
+python3 /path/to/lingora-tools/Demo/scripts/sync_translations.py \
+  --config ci/lingora.production.json --resources ci/ios-resources.json \
+  --check-only --app-bundle /path/to/MyApp.app
+```
+
+`--check-only` 不调用 CLI、不联网，不需要 API Key。上传前 ICU 转换的支持范围和拒绝格式见 Demo README；
+新工具直接复用同一转换器，不改 CLI、Android 或服务端。
 
 ## 执行边界
 
-- `main` push（含合并）触发，普通 PR 不上传文案。按团队规则配置分支保护与触发分支。
-- 所有写同一翻译目标的工作流使用相同 concurrency group；上传前拒绝旧提交。
-- 固定 CLI → 检查公开 URL / 解析锁定 Package → validate → push → 两个 namespace pull → validate → 必需文件检查 → 使用已解析 Package 构建。
-- 必需文件检查要求配置中每种语言的两个 namespace 都有有效的 APPLE_SDK JSON；按产品语言及
-  plural 要求调整。validate 成功或文件非空都不代表全量翻译覆盖。
-- `KEEP` 保留远端已有非空值，不自动更新已修改的英语；pull 使用 TRANSLATED/REVIEWED 时允许未审核译文。
-  生产审核策略需按团队要求调整。
-- 不缓存生成资源，不将生成资源写回 Git。成功 push 不会因后续失败回滚；重试仍使用当前提交。
-- push/pull 不自动发布 Content Delivery。需要在平台单独确认 APPLE_SDK 格式和发布流程。
-- 产物为未签名的模拟器 `.app` 压缩包，保留 7 天，不是可安装到真机的 IPA。
-  正式签名、测试和分发沿用业务项目流程，本模板不发布 SDK 或生产 App。
+- 模板仅在 main push（包括合并）执行。所有写同一翻译目标的工作流使用相同 concurrency group，
+  上传前拒绝旧提交；普通 PR 不上传。
+- 顺序为 URL 校验和锁版本解析 → 本地转换预检 → 所有 namespace validate → 一次 push → 所有 pull →
+  所有 validate → JSON 文件检查 → 锁版本构建 → Bundle 归属校验。任何一步失败立即停止。
+- 检查要求每个配置语言/namespace 都有合法 JSON；它不保证每个词条都已翻译。KEEP 不覆盖已有非空源文本，
+  翻译审核策略继续在业务 CLI 配置中控制。成功 push 不因后续失败回滚。
+- 输出目录专用于生成文件，不缓存或提交这些资源。工具不删除文件；旧资源布局需先备份迁移。
+- CLI push/pull 不自动发布 CDN，需在平台单独确认 APPLE_SDK 格式和发布配置。
+- 产物是未签名模拟器 App，保留 7 天；生产签名、真机测试和发布沿用业务项目流程。
 
-先在团队专用测试项目验收真实 push/pull、远端 Package 下载、资源打包与设备文案，再用于生产。
+先在获准的测试项目验证真实同步和运行时加载，再启用生产流程。

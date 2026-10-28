@@ -10,16 +10,7 @@ Lingora 的 iOS 运行时 SDK，负责读取 `APPLE_SDK` Content Delivery、缓�
 - Swift 6 / Xcode 16+
 - macOS 13 仅作为 `swift build` / `swift test` 宿主
 
-稳定版本：
-
-```swift
-.package(
-    url: "https://github.com/hzh137940556/lingora-iOS-sdk.git",
-    from: "0.1.0"
-)
-```
-
-测试渠道使用精确预发布版本：
+当前可用的预发布版本（精确锁定）：
 
 ```swift
 .package(
@@ -28,8 +19,8 @@ Lingora 的 iOS 运行时 SDK，负责读取 `APPLE_SDK` Content Delivery、缓�
 )
 ```
 
-Product 和 target 都叫 `Lingora`。版本 Tag 的根目录就是本 Package，不包含 Demo、CLI 或仓库脚本。
-上面的版本仅为格式示例，接入时选择仓库实际已发布的版本。
+目前没有发布稳定版 `0.1.0`，不要使用它作为安装版本。Product 和 target 都叫 `Lingora`。
+版本 Tag 的根目录就是本 Package，不包含 Demo、CLI 或仓库脚本。
 
 ### 已有 Xcode iOS 工程
 
@@ -39,7 +30,7 @@ Product 和 target 都叫 `Lingora`。版本 Tag 的根目录就是本 Package�
 3. 将 `Lingora` product 关联到需要 `import Lingora` 的 target。App 与独立 framework 都使用时，
    分别关联，不复制 SDK 源码。资源仍由调用方 target 自己持有。
 4. 保留 Xcode 生成的 `Package.resolved` 并提交到业务项目，以便 CI 复现版本。
-5. 在主线程初始化，显式调用 `remoteFetch()`，界面使用 `LingoraText` 或更新流。
+5. 在主线程初始化，SwiftUI 使用 `LingoraText` 自动加载；UIKit 使用下面的显式加载方式。
 
 本地源码联调使用 Add Local Package，选择本仓库的 **`SDK/` 目录**，不是仓库根目录。
 同一工程只保留一个 Lingora 来源；从本地转远端时移除本地引用，再添加远端并关联 product。
@@ -56,7 +47,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/hzh137940556/lingora-iOS-sdk.git",
-            exact: "0.1.0" // 替换为已发布版本
+            exact: "0.1.0-dev.3"
         ),
     ],
     targets: [
@@ -75,41 +66,46 @@ framework 则传自己的 Bundle，不能依赖 `.main` 找到其他模块的资
 
 ## 最小接入
 
-Content Delivery 必须使用 Lingora 的 `APPLE_SDK` 格式。默认 table 路径为 `{language}.json`，
-namespace 路径为 `{namespace}/{language}.json`。
+只需添加 Package、在 App 启动时初始化一次、使用翻译组件。无需先配置 CLI 或 CI。
+Content Delivery 使用 `APPLE_SDK` 格式，namespace 路径为 `{namespace}/{language}.json`。
+以下 URL、语言列表和 namespace 替换为自己项目实际已发布的值：
 
 ```swift
 import Lingora
 
+// App 启动时，在主线程初始化一次。
 Lingora.shared.initialize(
     contentDeliveryURL: URL(string: "https://cdn.example.com/apple")!,
-    locale: .current,
-    language: "en-US",
-    namespaces: ["app", "common"]
+    defaultNamespace: "app",
+    availableLanguages: ["en-US", "ja", "zh-CN"],
+    defaultLanguage: "en-US"
 )
 
-await Lingora.shared.remoteFetch()
-
-let title = Lingora.shared.translate("welcome", table: "app")
-let greeting = Lingora.shared.translate("welcome_name", "Lingora", table: "app")
-let items = Lingora.shared.translate("items_count", Int64(2), table: "app")
-let sharedTitle = Lingora.shared.translate("welcome", table: "common")
+// SwiftUI body 中自动加载和响应语言变化，无需另行 remoteFetch。
+LingoraText("welcome")
+LingoraText("items_count", Int64(2))
 ```
 
-SwiftUI 可直接使用响应式组件：
+`availableLanguages` 是自己发布的语言列表，按系统 locale 匹配；Apple Delivery 不提供 manifest。
+如果产品只使用某个固定语言，可改传 `language: "en-US"`。不传 defaultNamespace 时继续读取
+根目录 `{language}.json`，保持已有接入兼容性。额外 framework namespace 用 `namespaces: ["common"]`
+注册，翻译时传 `table: "common"` 和该 framework 的 Bundle。
+
+UIKit 或非响应式调用显式加载，随后更新自己的 UI：
 
 ```swift
-LingoraText("welcome", table: "app")
-LingoraText("items_count", Int64(2), table: "app")
+await Lingora.shared.preload()
+let title = Lingora.shared.translate("welcome")
+let greeting = Lingora.shared.translate("welcome_name", "Lingora")
 ```
 
-查找顺序为远端内存文档、磁盘缓存、可选 Bundle JSON、调用方 Bundle 的 `.strings/.stringsdict`、Key。
-`setCustomLocale(_:language:)` 切换语言后需调用 `remoteFetch()`；传入其他 language 的
-`remoteFetch(language:)` 只预取缓存，不切换当前语言。
+切换语言用 `setCustomLocale(_:language:)`。`LingoraText` 和 updater 自动按需加载；手动接入则再次
+调用 `preload()` 并更新 UI，或订阅 `onTranslationsUpdated()`。`remoteFetch()` 用于主动检查译文更新；
+传其他 language 的 `remoteFetch(language:)` 只预取缓存，不切换当前语言。
 
-`isInitialized`、`lastFetchDate` 和 `lastFetchSource` 可用于展示初始化与 Network/Cache 状态。
-`enableSwizzling` 默认 `false`；启用后只覆盖主线程中的普通 `Bundle.localizedString`，plural 和后台线程
-继续使用系统实现。新代码优先使用 `translate` 或 `LingoraText`。
+查找顺序为远端内存/已恢复磁盘缓存、可选 Bundle JSON、调用方 Bundle 的 `.strings/.stringsdict`、Key。
+`isInitialized`、`lastFetchDate` 和 `lastFetchSource` 可用于检查初始化和加载状态。
+`enableSwizzling` 默认关闭，新代码使用 `translate` 或 `LingoraText` 即可。
 
 ## 可选的离线 APPLE_SDK JSON
 
@@ -215,3 +211,22 @@ await Lingora.shared.preload() // 类似 Android 页面启动时的 preload
   没有额外的自动加载策略枚举或 forceRefresh 配置。切换语言/清缓存取消旧 preload，并阻止旧结果覆盖当前语言。
 
 保留 iOS 的 Bundle、SwiftUI、系统 plural 回退及上传 ICU 转换，不要求 Android 改动。数组翻译按本轮范围暂不做。
+
+## 当前源码中的修复（尚未发布）
+
+安装示例仍指向已发布的 `0.1.0-dev.3`；以下变更需要后续 SDK 发版后才能通过远端版本使用。
+
+- 复数规则来自固定 Unicode CLDR 49 cardinal 数据，覆盖地区特例，负数按绝对值计算。
+  Double API 使用最短十进制表示，不保留可见尾零，不支持 compact notation；普通数值的 `e/c` 为 0。
+  Android 使用系统 ICU，其 CLDR 版本随 OS 变化，因此规则版本可能不同。
+- 下载过程中限制实际响应为 10 MiB，缺失或不可信 Content-Length 也受限；超限继续使用有效缓存。
+- `initialize` 返回可忽略的 Bool：无效配置为 false，成功为 true；重复调用保留第一次配置并返回 true。
+  既有直接调用不需要修改，也可以继续检查 `isInitialized`。
+- 可选 swizzling 默认只允许 `Bundle.main`；需要兼容其他 Bundle 时传 `swizzlingBundles: [bundle]`。
+  列表替换默认值，仅普通远端文本可覆盖，其他 Bundle、plural 和后台线程保持系统行为。
+- 活跃的默认 `LingoraText` 共用一个更新观察对象，最后一个视图释放后取消监听与任务；
+  手动创建的 `LingoraSwiftUIUpdater(lingora:)` 仍保持各自生命周期。
+
+规则维护方式：开发仓库 `scripts/cldr/plurals.xml` 固定源数据，运行
+`python3 scripts/generate_plural_rules.py` 更新规则和官方样例测试；`make sdk-test` 检查生成物一致性。
+运行时不联网下载规则，也不依赖第三方库。许可见 THIRD_PARTY_NOTICES.md。

@@ -21,3 +21,15 @@ LingoraAutoLoad 三种策略和公开 forceRefresh 参数。不增加数组翻�
 iOS 原生参数与 plural 通过上传前 ICU 转换保持既有服务端/CLI 兼容；复杂有损格式拒绝上传，
 KEEP 不修复历史词条。SDK 保留格式校验、plural 边界、刷新顺序及状态测试。
 详细用法见 SDK/README.md；上传与 CI 门禁见 Demo/README.md 和 GITHUB_SETUP.md。
+
+## 当前源码的后续修复
+
+以下变更尚未随 SDK 版本发布，Demo 继续固定 `0.1.0-dev.3`：
+
+- CLDR 49 生成的 cardinal 规则与官方样例测试替代手写语言分支；地区、小数和负数修正规则。
+- 下载实际字节数上限与 Android 一样在读取时生效，超限保留缓存。
+- 可选 swizzling 按允许的 Bundle 隔离；初始化可检查 Bool 结果。
+- 默认 SwiftUI 文本共享更新观察对象，保持现有按需加载和回退行为。
+
+不新增 manifest、数组翻译或服务器配置；Android、服务端和 Demo UI 不变。
+翻译 CI 改为消费提交的精确版本和锁文件，不再读取远端版本 Variable。

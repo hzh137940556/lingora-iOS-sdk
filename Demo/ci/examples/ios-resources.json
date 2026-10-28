@@ -1,0 +1,4 @@
+{
+  "app": {"output": "../LingoraDemo/Generated", "bundle": "."},
+  "common": {"output": "../LingoraCommon/Generated", "bundle": "Frameworks/LingoraCommon.framework"}
+}

@@ -124,6 +124,82 @@ final class LingoraTests: XCTestCase {
         try? FileManager.default.removeItem(at: temporary)
     }
 
+    /// 默认文本共享监听，但没有视图持有时不保留后台加载生命周期。
+    func testSharedUpdaterReleasesWithLastConsumer() async {
+        var first: LingoraSwiftUIUpdater? = .shared()
+        var second: LingoraSwiftUIUpdater? = .shared()
+        XCTAssertTrue(first === second)
+        weak var observer = first
+        await Task.yield()
+        first = nil
+        XCTAssertNotNil(observer)
+        second = nil
+        XCTAssertNil(observer)
+    }
+
+    /// 不可信长度、无长度和正常边界响应都按实际字节数限制。
+    func testStreamingResponseLimit() async throws {
+        let session = makeSession()
+        for headers in [[:], ["Content-Length": "1"], ["Content-Length": "1000"]] {
+            MockURLProtocol.responses = [.init(status: 200, headers: headers, data: Data(repeating: 65, count: 65))]
+            do {
+                _ = try await ContentDeliveryStore.readLimited(URLRequest(url: URL(string: "https://cdn.example.com/en.json")!),
+                                                               session: session, maximumBytes: 64)
+                XCTFail("Oversized response should fail")
+            } catch let error as URLError {
+                XCTAssertEqual(error.code, .dataLengthExceedsMaximum)
+            }
+        }
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(repeating: 65, count: 64))]
+        let (data, _) = try await ContentDeliveryStore.readLimited(URLRequest(url: URL(string: "https://cdn.example.com/en.json")!),
+                                                                  session: session, maximumBytes: 64)
+        XCTAssertEqual(data.count, 64)
+    }
+
+    /// 超限响应不能覆盖最后有效磁盘缓存，也不应作为瞬态错误重复下载。
+    func testOversizedResponseRetainsCache() async throws {
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary, appVersion: "1")
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"hello":"Cached"}"#.utf8))]
+        await sdk.remoteFetch()
+        MockURLProtocol.responses = [.init(status: 200, headers: ["Content-Length": "999999999"], data: Data())]
+        await sdk.remoteFetch()
+        XCTAssertEqual(sdk.translate("hello"), "Cached")
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+        let restored = Lingora(session: makeSession(), cacheDirectory: temporary, appVersion: "1")
+        restored.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en")
+        MockURLProtocol.error = URLError(.notConnectedToInternet)
+        await restored.remoteFetch()
+        XCTAssertEqual(restored.translate("hello"), "Cached")
+    }
+
+    /// 同名 key 只能覆盖显式授权的 Bundle；plural 始终交给系统。
+    func testSwizzlingBundleIsolation() async throws {
+        let allowed = try makeJSONBundle([:])
+        let foreign = try makeJSONBundle([:])
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary, appVersion: "1")
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, language: "en",
+                       swizzlingBundles: [allowed])
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(
+            #"{"hello":"Remote","items":{"variations":{"plural":{"other":"%lld items"}}}}"#.utf8))]
+        await sdk.remoteFetch()
+        XCTAssertEqual(sdk.swizzledTranslation(for: "hello", table: nil, bundle: allowed), "Remote")
+        XCTAssertNil(sdk.swizzledTranslation(for: "hello", table: nil, bundle: foreign))
+        XCTAssertNil(sdk.swizzledTranslation(for: "hello", table: nil, bundle: .main))
+        XCTAssertNil(sdk.swizzledTranslation(for: "items", table: nil, bundle: allowed))
+    }
+
+    /// 调用方可检查配置失败，修正后重试；重复成功初始化不替换原配置。
+    func testInitializationResult() {
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary, appVersion: "1")
+        XCTAssertFalse(sdk.initialize(contentDeliveryURL: URL(string: "file:///tmp/translations")!))
+        XCTAssertFalse(sdk.isInitialized)
+        XCTAssertFalse(sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!, namespaces: ["../app"]))
+        XCTAssertTrue(sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!))
+        XCTAssertTrue(sdk.isInitialized)
+        XCTAssertTrue(sdk.initialize(contentDeliveryURL: URL(string: "https://ignored.example.com")!))
+    }
+
     /// namespace URL、远端格式化和 ETag/304 缓存必须形成闭环。
     func testFetchTranslateAndConditionalCache() async throws {
         let session = makeSession()
