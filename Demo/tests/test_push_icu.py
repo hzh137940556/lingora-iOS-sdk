@@ -14,6 +14,14 @@ from push_icu import convert_text, convert_file, prepare
 class IcuUploadTests(unittest.TestCase):
     """覆盖支持范围、拒绝行为和真实源文件转换。"""
     # 格式约束来自当前 Apple 导出器，不能假装支持有损的复杂 printf。
+    # 同一参数允许重复引用，但不能同时按对象和整数读取。
+    def test_repeated_parameter_types(self):
+        self.assertEqual(convert_text("%1$@ / %1$@"), "{0} / {0}")
+        self.assertEqual(convert_text("%1$lld / %1$lld"), "{0, number} / {0, number}")
+        for value in ("%1$@ / %1$lld", "%1$lld / %1$@"):
+            with self.assertRaisesRegex(ValueError, "Conflicting types"):
+                convert_text(value)
+
     def test_text_and_unsupported_formats(self):
         self.assertEqual(convert_text("Hello %@"), "Hello {0}")
         self.assertEqual(convert_text("%1$lld items"), "{0, number} items")

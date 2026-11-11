@@ -9,7 +9,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 
-# 将普通 printf 参数转换为数字 ICU 位置；plural 仍限制为单个数量参数。
+# 将 printf 参数转换为 ICU 位置并拒绝同位置类型冲突；plural 限制为单个数量参数。
 def convert_text(text: str, plural: bool = False) -> str:
     if not isinstance(text, str):
         raise ValueError("Translation must be text")
@@ -20,6 +20,7 @@ def convert_text(text: str, plural: bool = False) -> str:
     parameters = 0
     positional = None
     used = set()
+    parameter_types = {}
     while cursor < len(text):
         if text[cursor] != "%":
             result.append(text[cursor])
@@ -40,6 +41,10 @@ def convert_text(text: str, plural: bool = False) -> str:
         position = int(match.group(1)) - 1 if explicit else parameters
         parameters += 1
         used.add(position)
+        parameter_type = match.group(2)
+        if position in parameter_types and parameter_types[position] != parameter_type:
+            raise ValueError("Conflicting types for the same positional parameter")
+        parameter_types[position] = parameter_type
         if plural and (parameters > 1 or position != 0 or token.endswith("@")):
             raise ValueError("Plural only supports one integer quantity argument")
         kind = ", number" if token.endswith("d") else ""
