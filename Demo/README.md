@@ -204,3 +204,5 @@ python3 scripts/build_demo.py --check-resources
 普通 CI 不使用翻译密钥。`iOS Demo published package` 通过手动提供版本和包含 Demo 的完整 source SHA 验收，
 只检出 Demo，下载精确版本并构建；不参与 SDK 发布。真实翻译 CI、变量配置及启用步骤见
 [GitHub 配置](../GITHUB_SETUP.md)。业务项目可复制 [CI 模板](ci/examples/README.md)。
+
+Demo 参数区可编辑 Name/Time，观察 `time_today`、`reorder`、`repeat`、`numeric` 的格式化结果；复数区显示 0/1/2/5。验收指定服务时沿用上文的 `LINGORA_CONTENT_DELIVERY_URL` 构建参数，不修改默认地址。
