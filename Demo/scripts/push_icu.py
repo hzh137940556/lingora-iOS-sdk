@@ -9,7 +9,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 
-# 仅接受当前 Apple 导出器能够无损恢复的单参数格式。
+# 将普通 printf 参数转换为数字 ICU 位置；plural 仍限制为单个数量参数。
 def convert_text(text: str, plural: bool = False) -> str:
     if not isinstance(text, str):
         raise ValueError("Translation must be text")
@@ -18,23 +18,34 @@ def convert_text(text: str, plural: bool = False) -> str:
     result = []
     cursor = 0
     parameters = 0
+    positional = None
+    used = set()
     while cursor < len(text):
         if text[cursor] != "%":
             result.append(text[cursor])
             cursor += 1
             continue
-        match = re.match(r"%(?:%|(?:1\$)?(?:@|lld))", text[cursor:])
+        match = re.match(r"%(?:%|(?:([1-9][0-9]*)\$)?(@|lld))", text[cursor:])
         if not match:
-            raise ValueError("Only a single %@ or %lld parameter is supported; width/precision/reordering are rejected")
+            raise ValueError("Only %@ or %lld parameters are supported; width and precision are rejected")
         token = match.group()
         cursor += len(token)
         if token == "%%":
             result.append("%")
             continue
+        explicit = match.group(1) is not None
+        if positional is not None and positional != explicit:
+            raise ValueError("Mixed positional and sequential parameters are unsupported")
+        positional = explicit
+        position = int(match.group(1)) - 1 if explicit else parameters
         parameters += 1
-        if parameters > 1 or (plural and token.endswith("@")):
-            raise ValueError("Apple export cannot preserve multiple parameters or plural object arguments")
-        result.append("#" if plural else "{arg1, number}" if token.endswith("lld") else "{arg1}")
+        used.add(position)
+        if plural and (parameters > 1 or position != 0 or token.endswith("@")):
+            raise ValueError("Plural only supports one integer quantity argument")
+        kind = ", number" if token.endswith("d") else ""
+        result.append("#" if plural else "{" + str(position) + kind + "}")
+    if used and len(used) != max(used) + 1:
+        raise ValueError("Positional parameters must not contain gaps")
     # 无参数调用不会执行 printf；双百分号会在下载后保持双写，故拒绝歧义文本。
     if parameters == 0 and "%" in text and not plural:
         raise ValueError("Percent-only strings need an explicit application formatting contract")

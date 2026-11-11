@@ -24,6 +24,7 @@ private struct TranslationExample: Identifiable {
 struct ContentView: View {
     @StateObject private var updater = LingoraSwiftUIUpdater()
     @State private var language = "en-US"
+    @State private var timeInput = "10:30"
     @State private var loadState = DemoLoadState.loading
     @State private var isRefreshing = false
     @State private var selectedTranslation: TranslationExample?
@@ -48,6 +49,8 @@ struct ContentView: View {
                 ForEach(appExamples) { example in
                     translationButton(for: example)
                 }
+                timeExample
+                pluralExamples
                 CommonNamespaceView(language: language)
                 debugLog
             }
@@ -88,6 +91,28 @@ struct ContentView: View {
             TranslationExample(table: "app", key: "weekdays", value: translated("weekdays")),
             TranslationExample(table: "app", key: "en_month", value: translated("en_month")),
         ]
+    }
+
+    /// 将可编辑时间传入第一个位置参数，随语言和输入变化更新结果。
+    private var timeExample: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField(translated("time_input"), text: $timeInput)
+                .textFieldStyle(.roundedBorder)
+            Text(translated("time_today", timeInput))
+        }
+    }
+
+    /// 同时展示边界数量，便于验收当前语言的远端复数与 Bundle 回退。
+    private var pluralExamples: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach([0, 1, 2, 5], id: \.self) { count in
+                Text(translated("items_count", Int64(count)))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color.secondary.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     /// 显示 Android Demo 对应的状态信息和刷新动作。

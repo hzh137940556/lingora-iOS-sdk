@@ -21,3 +21,6 @@
 "namespace_common" = "common namespace";
 "debug_log" = "Debug log";
 "debug_log_empty" = "No log messages yet";
+
+"time_today" = "%1$@ at today";
+"time_input" = "Time";
