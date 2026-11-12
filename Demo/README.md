@@ -129,10 +129,12 @@ KEEP、不删除远端 key 等策略，`convertPlaceholdersToIcu=false` 防止�
 不会改写原生资源、下载内容、CLI、服务端或 Android；普通 Xcode build 不运行转换。
 直接运行 `lingora push` 会绕过此步骤，iOS 原生源文件请使用上述 Make 入口。
 
-支持普通文本、单个 `%@` → `{arg1}`、单个 `%lld` → `{arg1, number}`，以及
+支持普通文本、`%@` → `{0}`、`%lld` → `{0, number}`，以及
 `.stringsdict` 的独立单变量 `lld` plural → 含 `#` 的标准复数 JSON map。
-允许 `%1$@` / `%1$lld`；带参数文本中的 `%%` 保留为字面百分号。
-当前 Apple 导出器不能保留多参数的索引、宽度/精度、浮点类型或复杂 plural 嵌套，
+多参数按位置编号，支持连续显式编号及重复引用，不混用显式和隐式位置；`%%` 保留为字面百分号。
+同一位置只能使用一种类型：`%1$@ / %1$@` 合法，`%1$@ / %1$lld` 会在上传前失败，
+错误包含源文件、key 和 `Conflicting types`。检查由上传脚本执行，不属于 SDK 运行时；无需新增 CI 参数或 Secret。
+多参数换序需服务端保留 Apple 导出的参数编号。宽度/精度、浮点类型或复杂 plural 嵌套不在支持范围，
 因此这些输入在上传前失败；字面 ICU 花括号、plural 字面 `#` 和无参数百分号文本也拒绝，
 避免现有导出器错误转义。重复 key（同文件或跨文件）同样失败。
 这是一条保守、可验证的上传路径，并非完整 printf/ICU 编译器。
@@ -204,3 +206,5 @@ python3 scripts/build_demo.py --check-resources
 普通 CI 不使用翻译密钥。`iOS Demo published package` 通过手动提供版本和包含 Demo 的完整 source SHA 验收，
 只检出 Demo，下载精确版本并构建；不参与 SDK 发布。真实翻译 CI、变量配置及启用步骤见
 [GitHub 配置](../GITHUB_SETUP.md)。业务项目可复制 [CI 模板](ci/examples/README.md)。
+
+Demo 参数区可编辑 Name/Time，观察 `time_today`、`reorder`、`repeat`、`numeric` 的格式化结果；复数区显示 0/1/2/5。验收指定服务时沿用上文的 `LINGORA_CONTENT_DELIVERY_URL` 构建参数，不修改默认地址。

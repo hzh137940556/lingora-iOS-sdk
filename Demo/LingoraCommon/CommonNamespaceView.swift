@@ -24,7 +24,9 @@ public struct CommonNamespaceView: View {
             Text(translated("common_title"))
                 .font(.headline)
             Text(translated("welcome"))
-            Text(translated("items_count", Int64(3)))
+            ForEach([0, 1, 2, 5], id: \.self) { count in
+                Text(translated("items_count", Int64(count)))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)

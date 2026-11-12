@@ -21,3 +21,12 @@
 "namespace_common" = "common namespace";
 "debug_log" = "Debug log";
 "debug_log_empty" = "No log messages yet";
+
+"time_today" = "%1$@ at today";
+"time_input" = "Time";
+"name_input" = "Name";
+"parameter_examples" = "Parameter examples";
+"plural_examples" = "Plural examples (0 / 1 / 2 / 5)";
+"reorder" = "%1$@ at %2$@";
+"repeat" = "%1$@ / %1$@";
+"numeric" = "%1$@: %2$lld";

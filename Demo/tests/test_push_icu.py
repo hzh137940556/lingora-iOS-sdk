@@ -14,17 +14,37 @@ from push_icu import convert_text, convert_file, prepare
 class IcuUploadTests(unittest.TestCase):
     """覆盖支持范围、拒绝行为和真实源文件转换。"""
     # 格式约束来自当前 Apple 导出器，不能假装支持有损的复杂 printf。
+    # 同一参数允许重复引用，但不能同时按对象和整数读取。
+    def test_repeated_parameter_types(self):
+        self.assertEqual(convert_text("%1$@ / %1$@"), "{0} / {0}")
+        self.assertEqual(convert_text("%1$lld / %1$lld"), "{0, number} / {0, number}")
+        for value in ("%1$@ / %1$lld", "%1$lld / %1$@"):
+            with self.assertRaisesRegex(ValueError, "Conflicting types"):
+                convert_text(value)
+
     def test_text_and_unsupported_formats(self):
-        self.assertEqual(convert_text("Hello %@"), "Hello {arg1}")
-        self.assertEqual(convert_text("%1$lld items"), "{arg1, number} items")
-        self.assertEqual(convert_text("%@: 100%%"), "{arg1}: 100%")
+        self.assertEqual(convert_text("Hello %@"), "Hello {0}")
+        self.assertEqual(convert_text("%1$lld items"), "{0, number} items")
+        self.assertEqual(convert_text("%@: 100%%"), "{0}: 100%")
         self.assertEqual(convert_text("%lld items", plural=True), "# items")
         self.assertEqual(convert_text("one item", plural=True), "one item")
-        for text in ("%@ %@", "%2$@", "%d", "%.2f", "%n", "%*d", "%#@x@", "literal {name}", "100%", "%@ %1$@"):
+        for text in ("%2$@", "%d", "%.2f", "%n", "%*d", "%#@x@", "literal {name}", "100%", "%@ %1$@"):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 convert_text(text)
         with self.assertRaises(ValueError):
             convert_text("# %lld", plural=True)
+
+    # 位置参数保留换序和重复引用，顺序参数按出现顺序编号。
+    def test_positional_parameters(self):
+        self.assertEqual(convert_text("%2$@: %1$@ / %1$@"), "{1}: {0} / {0}")
+        self.assertEqual(convert_text("%@ %@"), "{0} {1}")
+        self.assertEqual(convert_text("%2$lld: %1$@"), "{1, number}: {0}")
+        for text in ("%1$@ %3$@", "%0$@", "%1$@ %@", "%2$lld"):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                convert_text(text)
+        for text in ("%1$lld %1$lld", "%1$@"):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                convert_text(text, plural=True)
 
     # 实际 Demo 资源按 namespace 合并为 JSON，原文件和 KEEP 策略保持不变。
     def test_demo_sources_and_configuration(self):
@@ -39,7 +59,8 @@ class IcuUploadTests(unittest.TestCase):
             for item in config["push"]["files"]:
                 values = json.loads(Path(item["path"]).read_text())
                 if item["namespace"] == "app":
-                    self.assertIn("{arg1}", values["welcome_name"])
+                    self.assertIn("{0}", values["welcome_name"])
+                    self.assertEqual(values["time_today"], "{0} at today")
                 self.assertIn("#", values["items_count"]["other"])
         self.assertEqual(source.read_bytes(), before)
 

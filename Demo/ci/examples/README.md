@@ -41,6 +41,8 @@
 - `main` push（含合并）触发，普通 PR 不上传文案。按团队规则配置分支保护与触发分支。
 - 所有写同一翻译目标的工作流使用相同 concurrency group；上传前拒绝旧提交。
 - 固定 CLI → 检查公开 URL / 解析锁定 Package → validate → push → 两个 namespace pull → validate → 必需文件检查 → 使用已解析 Package 构建。
+- 上传步骤通过 `ci/push_icu.py` 校验位置参数类型：允许 `%1$@ / %1$@`，拒绝 `%1$@ / %1$lld`。
+  冲突会在远端写入前终止流程，日志包含文件和 key；修正源资源后重跑。已复制旧脚本的接入项目需同步更新脚本，无需新增 CI 参数或 Secret。
 - 必需文件检查要求配置中每种语言的两个 namespace 都有有效的 APPLE_SDK JSON；按产品语言及
   plural 要求调整。validate 成功或文件非空都不代表全量翻译覆盖。
 - `KEEP` 保留远端已有非空值，不自动更新已修改的英语；pull 使用 TRANSLATED/REVIEWED 时允许未审核译文。

@@ -13,7 +13,7 @@ import threading
 import zipfile
 
 DEMO = Path(__file__).resolve().parents[1]
-EXPECTED = {"welcome_name": "Hello, %@!", "items_count": {"variations": {"plural": {"one": "%lld item", "other": "%lld items"}}}}
+EXPECTED = {"welcome_name": "Hello, %1$@!", "time_today": "%1$@ at today", "items_count": {"variations": {"plural": {"one": "%lld item", "other": "%lld items"}}}}
 
 
 # 协议 fixture 校验 CLI 的真实 multipart 请求，导出响应使用已核对的服务端格式。
@@ -54,7 +54,8 @@ class Handler(BaseHTTPRequestHandler):
                 mapping = params["fileMappings"][0]
                 assert mapping["namespace"] == "app" and mapping["languageTag"] == "en-US"
                 values = json.loads(next(p.get_payload(decode=True) for p in parts if p.get_filename()))
-                assert values["welcome_name"] == "Hello, {arg1}!"
+                assert values["welcome_name"] == "Hello, {0}!"
+                assert values["time_today"] == "{0} at today"
                 assert values["items_count"] == {"one": "# item", "other": "# items"}
                 Handler.imported = True
                 self.respond({"affected": 0, "deleted": 0})

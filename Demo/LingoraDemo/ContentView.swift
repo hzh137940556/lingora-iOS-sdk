@@ -24,6 +24,8 @@ private struct TranslationExample: Identifiable {
 struct ContentView: View {
     @StateObject private var updater = LingoraSwiftUIUpdater()
     @State private var language = "en-US"
+    @State private var timeInput = "10:30"
+    @State private var nameInput = "Alice"
     @State private var loadState = DemoLoadState.loading
     @State private var isRefreshing = false
     @State private var selectedTranslation: TranslationExample?
@@ -45,6 +47,8 @@ struct ContentView: View {
                 Text(translated("tap_key_hint"))
                 Text(translated("namespace_app"))
                     .font(.headline)
+                timeExample
+                pluralExamples
                 ForEach(appExamples) { example in
                     translationButton(for: example)
                 }
@@ -88,6 +92,35 @@ struct ContentView: View {
             TranslationExample(table: "app", key: "weekdays", value: translated("weekdays")),
             TranslationExample(table: "app", key: "en_month", value: translated("en_month")),
         ]
+    }
+
+    /// 展示可编辑参数及换序、重复引用、数字格式化结果。
+    private var timeExample: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(translated("parameter_examples")).font(.headline)
+            TextField(translated("name_input"), text: $nameInput)
+                .textFieldStyle(.roundedBorder)
+            TextField(translated("time_input"), text: $timeInput)
+                .textFieldStyle(.roundedBorder)
+            Text(translated("time_today", timeInput))
+            Text(translated("reorder", nameInput, timeInput))
+            Text(translated("repeat", nameInput))
+            Text(translated("numeric", nameInput, Int64(7)))
+        }
+    }
+
+    /// 同时展示边界数量，便于验收当前语言的远端复数与 Bundle 回退。
+    private var pluralExamples: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(translated("plural_examples")).font(.headline)
+            ForEach([0, 1, 2, 5], id: \.self) { count in
+                Text(translated("items_count", Int64(count)))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color.secondary.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     /// 显示 Android Demo 对应的状态信息和刷新动作。
@@ -157,6 +190,19 @@ struct ContentView: View {
             argument,
             table: table,
             bundle: .main,
+            locale: Locale(identifier: language)
+        )
+    }
+
+    /// 按调用方顺序传入两个参数，由导出模板决定显示顺序和类型。
+    private func translated(
+        _ key: String,
+        _ first: CVarArg,
+        _ second: CVarArg,
+        table: String = "app"
+    ) -> String {
+        Lingora.shared.translate(
+            key, first, second, table: table, bundle: .main,
             locale: Locale(identifier: language)
         )
     }
