@@ -9,6 +9,14 @@ import ObjectiveC
 enum BundleSwizzler {
     private(set) static var isEnabled = false
 
+    /// SDK 内部 fallback 只读取系统资源，避免重新引入已被拒绝的远端模板。
+    static func localizedString(in bundle: Bundle, forKey key: String, value: String?, table: String?) -> String {
+        if isEnabled {
+            return bundle.lingoraLocalizedString(forKey: key, value: value, table: table)
+        }
+        return bundle.localizedString(forKey: key, value: value, table: table)
+    }
+
     /// 启用普通文本查找接管；后台线程继续使用系统原实现。
     static func enable() {
         guard !isEnabled,
@@ -45,6 +53,11 @@ private extension Bundle {
 @MainActor
 enum BundleSwizzler {
     static var isEnabled: Bool { false }
+
+    /// 无方法交换时直接读取系统资源。
+    static func localizedString(in bundle: Bundle, forKey key: String, value: String?, table: String?) -> String {
+        bundle.localizedString(forKey: key, value: value, table: table)
+    }
 
     /// 无 Objective-C runtime 时不执行全局方法交换。
     static func enable() {}

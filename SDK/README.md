@@ -107,6 +107,8 @@ let greeting = Lingora.shared.translate("welcome_name", "Lingora")
 `isInitialized`、`lastFetchDate` 和 `lastFetchSource` 可用于检查初始化和加载状态。
 `enableSwizzling` 默认关闭，新代码使用 `translate` 或 `LingoraText` 即可。
 
+当前源码（尚未发布）：SDK 内部原生资源回退绕过 swizzling，已被参数安全检查拒绝的远端模板不会再次进入格式化；外部 `NSLocalizedString` 的普通字符串接管行为保持不变。
+
 ## 可选的离线 APPLE_SDK JSON
 
 当服务端原生 Apple 导出不能正确转换 ICU 占位符时，可以使用现有 CLI 的 `apple-sdk`

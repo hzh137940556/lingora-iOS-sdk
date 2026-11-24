@@ -697,9 +697,38 @@ final class LingoraTests: XCTestCase {
         XCTAssertEqual(MockURLProtocol.requests.count, 3)
     }
 
+    /// 真实方法交换下，SDK 回退不重新引入被拒绝的模板，外部 Bundle 调用仍可接管。
+    func testSwizzlingCannotBypassSafeFormatter() async throws {
+        URLProtocol.registerClass(MockURLProtocol.self)
+        defer { URLProtocol.unregisterClass(MockURLProtocol.self) }
+        let plural: [String: Any] = ["native_plural": [
+            "NSStringLocalizedFormatKey": "%#@count@",
+            "count": ["NSStringFormatSpecTypeKey": "NSStringPluralRuleType",
+                      "NSStringFormatValueTypeKey": "lld", "one": "%lld item", "other": "%lld items"]
+        ]]
+        let pluralData = try PropertyListSerialization.data(fromPropertyList: plural, format: .xml, options: 0)
+        let bundle = try makeJSONBundle([
+            "Localizable.strings": #""native" = "Local %lld";"#,
+            "Localizable.stringsdict": String(decoding: pluralData, as: UTF8.self)
+        ])
+        let sdk = Lingora.shared
+        sdk.initialize(contentDeliveryURL: URL(string: "https://audit.example.com")!,
+                       locale: Locale(identifier: "en"), language: "en", enableSwizzling: true,
+                       swizzlingBundles: [bundle])
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(
+            #"{"unsafe":"%d","native":"%d","hello":"Remote","native_plural":{"variations":{"plural":{"other":"%@"}}}}"#.utf8))]
+        await sdk.remoteFetch()
+        XCTAssertNil(SafeFormatter.render("%d", arguments: [Int.max], locale: Locale(identifier: "en")))
+        XCTAssertEqual(sdk.translate("unsafe", Int.max, bundle: bundle), "unsafe")
+        XCTAssertEqual(sdk.translate("native", Int.max, bundle: bundle),
+                       String(format: "Local %lld", locale: Locale(identifier: "en"), arguments: [Int.max]))
+        XCTAssertEqual(bundle.localizedString(forKey: "hello", value: nil, table: nil), "Remote")
+        XCTAssertEqual(sdk.translate("native_plural", Int64(2), bundle: bundle), "2 items")
+    }
+
     /// 默认不启用全局 Bundle swizzling。
     func testSwizzlingIsOptIn() {
-        XCTAssertFalse(BundleSwizzler.isEnabled)
+        let previouslyEnabled = BundleSwizzler.isEnabled
         let lingora = Lingora(
             session: makeSession(),
             cacheDirectory: temporary,
@@ -710,7 +739,7 @@ final class LingoraTests: XCTestCase {
             language: "en",
             enableSwizzling: false
         )
-        XCTAssertFalse(BundleSwizzler.isEnabled)
+        XCTAssertEqual(BundleSwizzler.isEnabled, previouslyEnabled)
     }
 
     /// 重复 initialize 必须保留第一次 URL、语言和 namespace 配置。
