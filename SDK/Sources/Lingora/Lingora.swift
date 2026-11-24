@@ -553,14 +553,14 @@ public final class Lingora {
             guard let path = bundle.path(forResource: tag, ofType: "lproj"),
                   let localized = Bundle(path: path)
             else { continue }
-            let value = localized.localizedString(
-                forKey: key,
+            let value = BundleSwizzler.localizedString(
+                in: localized, forKey: key,
                 value: missingValue,
                 table: table
             )
             if value != missingValue { return value }
         }
-        let value = bundle.localizedString(forKey: key, value: missingValue, table: table)
+        let value = BundleSwizzler.localizedString(in: bundle, forKey: key, value: missingValue, table: table)
         return value == missingValue ? nil : value
     }
 
