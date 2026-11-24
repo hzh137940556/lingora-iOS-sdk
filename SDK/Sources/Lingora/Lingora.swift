@@ -308,14 +308,12 @@ public final class Lingora {
         locale providedLocale: Locale
     ) -> String {
         let locale = currentLocale == .current ? providedLocale : currentLocale
-        let remoteLocale = resolvedLanguage != currentLanguage
-            ? resolvedLanguage.map { Locale(identifier: $0) } ?? locale : locale
         if let template = remoteTemplate(
             key,
             arguments: arguments,
             table: table,
             locale: resolvedLanguage.map { Locale(identifier: $0) } ?? locale
-        ), let rendered = SafeFormatter.render(template, arguments: arguments, locale: remoteLocale) {
+        ), let rendered = SafeFormatter.render(template, arguments: arguments, locale: locale) {
             return rendered
         }
         let sdkTable = table ?? defaultNamespace

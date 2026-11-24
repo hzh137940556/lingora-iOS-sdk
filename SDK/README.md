@@ -246,6 +246,8 @@ await Lingora.shared.preload() // 类似 Android 页面启动时的 preload
 - Apple 导出将 signed `%d` / `%ld` / `%lld` 统一为 `%lld`；SDK 会安全提升 Int8/Int16/Int32 参数后格式化。
   新上传工具的这些整数格式使用 Swift Int/Int64 时也兼容旧 SDK；使用 Int32 等小整数需等待本次 SDK 修复发布。
 
+当前源码（尚未发布）：自动匹配基础语言或 defaultLanguage 时，数字格式继续使用格式化 locale；复数规则使用实际文档语言。
+
 纯离线初始化示例（当前源码 API）：
 
 ```swift
