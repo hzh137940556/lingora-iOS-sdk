@@ -234,15 +234,21 @@ public final class Lingora {
             if updatesCurrentRequest { loadState = .cancelled }
             return
         }
+        // 失败缓存重试不能反复通知 SwiftUI，否则通知触发 preload 后会形成循环。
+        let documentsChanged = loaded.contains { table, value in
+            loadedDocuments[DocumentKey(language: documentLanguage, table: table)]?.document != value.0
+        }
         for (table, value) in loaded {
             loadedDocuments[DocumentKey(language: documentLanguage, table: table)] = StoredDocument(
-                document: value.0, source: value.1, date: Date(), fetched: true
+                document: value.0, source: value.1, date: Date(), fetched: !failedTables.contains(table)
             )
         }
         // 语言切换只改变展示目标，成功的旧语言刷新仍更新其独立缓存；clearCache 则使整个代次失效。
         guard updatesCurrentRequest || resolvedLanguage == documentLanguage else { return }
         activateDocuments(language: documentLanguage, failedTables: failedTables.sorted())
-        if !loaded.isEmpty { notifyTranslationsUpdated() }
+        if documentsChanged || loaded.keys.contains(where: { !failedTables.contains($0) }) {
+            notifyTranslationsUpdated()
+        }
         emit(.debug, "Fetched language \(requestedLanguage), tables=\(loaded.count)")
     }
 
