@@ -1061,6 +1061,55 @@ final class LingoraTests: XCTestCase {
         withExtendedLifetime(updater) {}
     }
 
+    /// 失败缓存保留展示并在冷却后重试，重复缓存通知不能形成 SwiftUI 加载循环。
+    func testCachedFailureRetriesAfterCooldown() async throws {
+        let base = URL(string: "https://cdn.example.com")!
+        let initial = Lingora(session: makeSession(), cacheDirectory: temporary)
+        initial.initialize(contentDeliveryURL: base, language: "en")
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"welcome":"old"}"#.utf8))]
+        await initial.remoteFetch()
+        let restored = Lingora(session: makeSession(), cacheDirectory: temporary)
+        restored.initialize(contentDeliveryURL: base, language: "en")
+        let cacheRestored = await waitUntil { restored.translate("welcome") == "old" }
+        XCTAssertTrue(cacheRestored)
+        var notifications = 0
+        let updates = restored.onTranslationsUpdated()
+        let observer = Task { for await _ in updates { notifications += 1 } }
+        defer { observer.cancel() }
+        MockURLProtocol.responses = [.init(status: 404, headers: [:], data: Data())]
+        await restored.preload()
+        let updater = LingoraSwiftUIUpdater(lingora: restored)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(restored.translate("welcome"), "old")
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+        XCTAssertEqual(notifications, 0)
+        try await Task.sleep(for: .milliseconds(5100))
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"welcome":"fresh"}"#.utf8))]
+        await restored.preload()
+        XCTAssertEqual(restored.translate("welcome"), "fresh")
+        XCTAssertEqual(MockURLProtocol.requestCount, 3)
+        XCTAssertEqual(restored.loadState, .loaded(source: .network, failedTables: []))
+        withExtendedLifetime(updater) {}
+    }
+
+    /// HTTP 304 是有效的网络确认，不应让后续 preload 不断重复请求。
+    func testNotModifiedCompletesPreload() async throws {
+        let base = URL(string: "https://cdn.example.com")!
+        let initial = Lingora(session: makeSession(), cacheDirectory: temporary)
+        initial.initialize(contentDeliveryURL: base, language: "en")
+        MockURLProtocol.responses = [.init(status: 200, headers: ["ETag": "v1"], data: Data(#"{"hello":"cached"}"#.utf8))]
+        await initial.remoteFetch()
+        let restored = Lingora(session: makeSession(), cacheDirectory: temporary)
+        restored.initialize(contentDeliveryURL: base, language: "en")
+        MockURLProtocol.responses = [.init(status: 304, headers: [:], data: Data())]
+        await restored.preload()
+        await restored.preload()
+        XCTAssertEqual(restored.translate("hello"), "cached")
+        XCTAssertEqual(restored.loadState, .loaded(source: .cache, failedTables: []))
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+        XCTAssertEqual(MockURLProtocol.requests.last?.value(forHTTPHeaderField: "If-None-Match"), "v1")
+    }
+
     /// 已恢复缓存立即可读，但首次 preload 仍检查网络以免永远停留在旧翻译。
     func testPreloadRefreshesRestoredCache() async throws {
         MockURLProtocol.responses = [
