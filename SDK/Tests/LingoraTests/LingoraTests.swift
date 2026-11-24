@@ -124,6 +124,24 @@ final class LingoraTests: XCTestCase {
         try? FileManager.default.removeItem(at: temporary)
     }
 
+    /// 自动匹配只改变文档及复数语言，数字格式保留调用方的地区偏好。
+    func testMatchedLanguagePreservesFormattingLocale() async throws {
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!,
+                       locale: Locale(identifier: "fr-FR"), availableLanguages: ["en"], defaultLanguage: "en")
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(
+            #"{"decimal":"%.2f","items":{"variations":{"plural":{"one":"one","other":"other"}}}}"#.utf8))]
+        await sdk.preload()
+        XCTAssertEqual(sdk.translate("decimal", 1.5), "1,50")
+        XCTAssertEqual(sdk.translate("items", Int64(0)), "other")
+        try sdk.setCustomLocale(Locale(identifier: "en-DE"))
+        await sdk.preload()
+        XCTAssertEqual(sdk.resolvedLanguage, "en")
+        XCTAssertEqual(sdk.translate("decimal", 1.5),
+                       String(format: "%.2f", locale: Locale(identifier: "en-DE"), arguments: [1.5]))
+        XCTAssertEqual(MockURLProtocol.requestCount, 1)
+    }
+
     /// 显式语言覆盖只决定文档与复数；参数仍使用调用方的格式化 locale。
     func testExplicitLanguageUsesDocumentPluralRules() async throws {
         let document = #"{"items":{"variations":{"plural":{"one":"%lld item","other":"%lld items"}}},"decimal":"%.2f"}"#
