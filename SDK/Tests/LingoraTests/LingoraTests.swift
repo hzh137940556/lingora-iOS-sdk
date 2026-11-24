@@ -699,7 +699,7 @@ final class LingoraTests: XCTestCase {
 
     /// 默认不启用全局 Bundle swizzling。
     func testSwizzlingIsOptIn() {
-        XCTAssertFalse(BundleSwizzler.isEnabled)
+        let previouslyEnabled = BundleSwizzler.isEnabled
         let lingora = Lingora(
             session: makeSession(),
             cacheDirectory: temporary,
@@ -710,7 +710,7 @@ final class LingoraTests: XCTestCase {
             language: "en",
             enableSwizzling: false
         )
-        XCTAssertFalse(BundleSwizzler.isEnabled)
+        XCTAssertEqual(BundleSwizzler.isEnabled, previouslyEnabled)
     }
 
     /// 重复 initialize 必须保留第一次 URL、语言和 namespace 配置。
@@ -1318,4 +1318,99 @@ final class LingoraTests: XCTestCase {
         return condition()
     }
 
+    /// 自动匹配只改变文档及复数语言，数字格式保留调用方的地区偏好。
+    func testMatchedLanguagePreservesFormattingLocale() async throws {
+        let sdk = Lingora(session: makeSession(), cacheDirectory: temporary)
+        sdk.initialize(contentDeliveryURL: URL(string: "https://cdn.example.com")!,
+                       locale: Locale(identifier: "fr-FR"), availableLanguages: ["en"], defaultLanguage: "en")
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(
+            #"{"decimal":"%.2f","items":{"variations":{"plural":{"one":"one","other":"other"}}}}"#.utf8))]
+        await sdk.preload()
+        XCTAssertEqual(sdk.translate("decimal", 1.5), "1,50")
+        XCTAssertEqual(sdk.translate("items", Int64(0)), "other")
+        try sdk.setCustomLocale(Locale(identifier: "en-DE"))
+        await sdk.preload()
+        XCTAssertEqual(sdk.resolvedLanguage, "en")
+        XCTAssertEqual(sdk.translate("decimal", 1.5),
+                       String(format: "%.2f", locale: Locale(identifier: "en-DE"), arguments: [1.5]))
+        XCTAssertEqual(MockURLProtocol.requestCount, 1)
+    }
+
+    /// 失败缓存保留展示并在冷却后重试，重复缓存通知不能形成 SwiftUI 加载循环。
+    func testCachedFailureRetriesAfterCooldown() async throws {
+        let base = URL(string: "https://cdn.example.com")!
+        let initial = Lingora(session: makeSession(), cacheDirectory: temporary)
+        initial.initialize(contentDeliveryURL: base, language: "en")
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"welcome":"old"}"#.utf8))]
+        await initial.remoteFetch()
+        let restored = Lingora(session: makeSession(), cacheDirectory: temporary)
+        restored.initialize(contentDeliveryURL: base, language: "en")
+        let cacheRestored = await waitUntil { restored.translate("welcome") == "old" }
+        XCTAssertTrue(cacheRestored)
+        var notifications = 0
+        let updates = restored.onTranslationsUpdated()
+        let observer = Task { for await _ in updates { notifications += 1 } }
+        defer { observer.cancel() }
+        MockURLProtocol.responses = [.init(status: 404, headers: [:], data: Data())]
+        await restored.preload()
+        let updater = LingoraSwiftUIUpdater(lingora: restored)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(restored.translate("welcome"), "old")
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+        XCTAssertEqual(notifications, 0)
+        try await Task.sleep(for: .milliseconds(5100))
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(#"{"welcome":"fresh"}"#.utf8))]
+        await restored.preload()
+        XCTAssertEqual(restored.translate("welcome"), "fresh")
+        XCTAssertEqual(MockURLProtocol.requestCount, 3)
+        XCTAssertEqual(restored.loadState, .loaded(source: .network, failedTables: []))
+        withExtendedLifetime(updater) {}
+    }
+
+    /// HTTP 304 是有效的网络确认，不应让后续 preload 不断重复请求。
+    func testNotModifiedCompletesPreload() async throws {
+        let base = URL(string: "https://cdn.example.com")!
+        let initial = Lingora(session: makeSession(), cacheDirectory: temporary)
+        initial.initialize(contentDeliveryURL: base, language: "en")
+        MockURLProtocol.responses = [.init(status: 200, headers: ["ETag": "v1"], data: Data(#"{"hello":"cached"}"#.utf8))]
+        await initial.remoteFetch()
+        let restored = Lingora(session: makeSession(), cacheDirectory: temporary)
+        restored.initialize(contentDeliveryURL: base, language: "en")
+        MockURLProtocol.responses = [.init(status: 304, headers: [:], data: Data())]
+        await restored.preload()
+        await restored.preload()
+        XCTAssertEqual(restored.translate("hello"), "cached")
+        XCTAssertEqual(restored.loadState, .loaded(source: .cache, failedTables: []))
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+        XCTAssertEqual(MockURLProtocol.requests.last?.value(forHTTPHeaderField: "If-None-Match"), "v1")
+    }
+
+    /// 真实方法交换下，SDK 回退不重新引入被拒绝的模板，外部 Bundle 调用仍可接管。
+    func testSwizzlingCannotBypassSafeFormatter() async throws {
+        URLProtocol.registerClass(MockURLProtocol.self)
+        defer { URLProtocol.unregisterClass(MockURLProtocol.self) }
+        let plural: [String: Any] = ["native_plural": [
+            "NSStringLocalizedFormatKey": "%#@count@",
+            "count": ["NSStringFormatSpecTypeKey": "NSStringPluralRuleType",
+                      "NSStringFormatValueTypeKey": "lld", "one": "%lld item", "other": "%lld items"]
+        ]]
+        let pluralData = try PropertyListSerialization.data(fromPropertyList: plural, format: .xml, options: 0)
+        let bundle = try makeJSONBundle([
+            "Localizable.strings": #""native" = "Local %lld";"#,
+            "Localizable.stringsdict": String(decoding: pluralData, as: UTF8.self)
+        ])
+        let sdk = Lingora.shared
+        sdk.initialize(contentDeliveryURL: URL(string: "https://audit.example.com")!,
+                       locale: Locale(identifier: "en"), language: "en", enableSwizzling: true,
+                       swizzlingBundles: [bundle])
+        MockURLProtocol.responses = [.init(status: 200, headers: [:], data: Data(
+            #"{"unsafe":"%d","native":"%d","hello":"Remote","native_plural":{"variations":{"plural":{"other":"%@"}}}}"#.utf8))]
+        await sdk.remoteFetch()
+        XCTAssertNil(SafeFormatter.render("%d", arguments: [Int.max], locale: Locale(identifier: "en")))
+        XCTAssertEqual(sdk.translate("unsafe", Int.max, bundle: bundle), "unsafe")
+        XCTAssertEqual(sdk.translate("native", Int.max, bundle: bundle),
+                       String(format: "Local %lld", locale: Locale(identifier: "en"), arguments: [Int.max]))
+        XCTAssertEqual(bundle.localizedString(forKey: "hello", value: nil, table: nil), "Remote")
+        XCTAssertEqual(sdk.translate("native_plural", Int64(2), bundle: bundle), "2 items")
+    }
 }
